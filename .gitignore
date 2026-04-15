@@ -1,0 +1,52 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Cursor local data
+.cursor/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Frontend (React/Vite)
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/.cache/
+
+# Backend (Python/FastAPI)
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/htmlcov/
+
+# Python bytecode
+*.pyc
+*.pyo
+*.pyd
+
+# Generic caches / coverage
+coverage/
+.pytest_cache/
+
+# Local DB / temp
+*.sqlite
+*.sqlite3
+*.db
+*.tmp
