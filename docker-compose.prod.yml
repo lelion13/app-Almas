@@ -1,0 +1,74 @@
+# Producción VPS (Traefik + GHCR). Uso:
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+#
+# Dominio: almas.lionapp.cloud
+# Routing: Traefik → frontend (Nginx) → /api y /health al backend.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-almas}
+      POSTGRES_USER: ${POSTGRES_USER:-almas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+    volumes:
+      - almas_pgdata:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE in .env.prod}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env.prod}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env.prod}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://almas.lionapp.cloud}
+      SKIP_DB_MIGRATE: ${SKIP_DB_MIGRATE:-0}
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?set FRONTEND_IMAGE in .env.prod}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "80"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.almas.rule=Host(`almas.lionapp.cloud`)
+      - traefik.http.routers.almas.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.almas.tls=true
+      - traefik.http.routers.almas.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}
+      - traefik.http.services.almas.loadbalancer.server.port=80
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  almas_pgdata:

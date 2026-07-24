@@ -8,6 +8,12 @@
 - Start backend: `uvicorn app.main:app --reload --host 127.0.0.1 --port 8000` (from `backend/` with `PYTHONPATH=.`).
 - Start frontend: `npm install` and `npm run dev` from `frontend/` (proxy `/api` → backend).
 
+## Producción VPS (Docker)
+- Dominio: `https://almas.lionapp.cloud`
+- Guía completa (deploy + migración de datos locales): `docs/vps-deploy.md`
+- Dump local: `.\scripts\export-local-db.ps1`
+- Compose: `docker-compose.prod.yml` + `.env.prod` (plantilla `.env.prod.example`)
+
 ## Cierres mensuales (SigueFit)
 - API bajo `/api/v1`: cierres, import `.xlsx`, resúmenes por categoría/método, gastos manuales, profesoras (admin).
 - Detalle funcional en `docs/monthly-closings-spec.md`.

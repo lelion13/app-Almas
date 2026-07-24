@@ -18,6 +18,13 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+!.env.prod.example
+
+# DB dumps (migración VPS)
+*.dump
+almas_local.dump
+almas.sql
+
 
 # Frontend (React/Vite)
 frontend/node_modules/

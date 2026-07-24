@@ -103,8 +103,14 @@ npm run preview
 2. Levantar frontend en `localhost:5173`
 3. Verificar que `GET /health` responda `{"status":"ok"}`
 
+## Producción (VPS Docker)
+
+- Dominio: `https://almas.lionapp.cloud`
+- Ver `docs/vps-deploy.md` (compose, Traefik, GHCR y **migración de la DB local**).
+- Plantilla de secretos: `.env.prod.example`
+
 ## Notas de seguridad
 
-- No commitear archivos `.env`.
+- No commitear archivos `.env` ni `.env.prod`.
 - No subir secretos, tokens ni credenciales.
-- Usar solo archivos `*.env.example` para compartir configuraciones.
+- Usar solo archivos `*.env.example` / `.env.prod.example` para compartir configuraciones.

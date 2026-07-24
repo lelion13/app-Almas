@@ -1,0 +1,147 @@
+# Deploy VPS — almas.lionapp.cloud
+
+Stack: Traefik → frontend (Nginx) → backend (FastAPI) + Postgres en Docker.
+
+## Prerrequisitos VPS
+
+- Traefik ya corriendo (mismo patrón que otras apps `*.lionapp.cloud`)
+- DNS `almas.lionapp.cloud` → IP del VPS
+- Acceso GHCR (`ghcr.io/lelion13/...`)
+- Carpeta: `/docker/app-almas/`
+
+## 1. Imágenes
+
+Push a `main` (o `workflow_dispatch`) construye:
+
+- `ghcr.io/lelion13/app-almas-backend:<sha|main>`
+- `ghcr.io/lelion13/app-almas-frontend:<sha|main>`
+
+Preferí tag por SHA en `.env.prod` (evitar depender solo de `:main` a largo plazo).
+
+## 2. Archivos en el VPS
+
+```bash
+mkdir -p /docker/app-almas
+cd /docker/app-almas
+# copiar docker-compose.prod.yml y .env.prod (desde .env.prod.example)
+chmod 600 .env.prod
+```
+
+Ajustá en `.env.prod`:
+
+- `POSTGRES_PASSWORD` / `DATABASE_URL` (misma clave)
+- `JWT_SECRET` (largo y aleatorio; **si restaurás dump, podés reusar el JWT local** para no invalidar sesiones, o rotarlo y pedir re-login)
+- `BACKEND_IMAGE` / `FRONTEND_IMAGE`
+- `TRAEFIK_CERT_RESOLVER` / `TRAEFIK_ENTRYPOINT` (igual que tus otras apps)
+
+## 3. Migración de datos locales (obligatoria)
+
+### 3.1 En tu PC — chequear revisión Alembic
+
+Antes del dump, en la DB local:
+
+```sql
+SELECT version_num FROM alembic_version;
+```
+
+El código de `main` llega hasta **`002`**.
+
+- Si ves **`001` o `002`**: OK, dump directo.
+- Si ves **`003`** (quedó de la feature MP descartada): limpiá antes del dump:
+
+```sql
+DROP TABLE IF EXISTS income_reconciliations CASCADE;
+DROP TABLE IF EXISTS mp_income_lines CASCADE;
+DROP TABLE IF EXISTS mp_import_batches CASCADE;
+DROP TABLE IF EXISTS mp_accounts CASCADE;
+UPDATE alembic_version SET version_num = '002';
+```
+
+### 3.2 Dump local (Windows / PowerShell)
+
+Con PostgreSQL en el PATH (o ruta completa a `pg_dump`):
+
+```powershell
+cd c:\Users\llion\Documents\apps\app-Almas
+# Ajustá user/db/host/port según backend\.env
+$env:PGPASSWORD = "TU_PASSWORD_LOCAL"
+pg_dump -h localhost -p 5432 -U postgres -d almas -Fc -f almas_local.dump
+```
+
+Formato custom (`-Fc`) permite restore flexible.
+
+### 3.3 Subir dump al VPS
+
+```powershell
+scp almas_local.dump root@TU_VPS:/docker/app-almas/almas_local.dump
+```
+
+### 3.4 Restaurar en Docker (orden importante)
+
+```bash
+cd /docker/app-almas
+
+# 1) Solo base (volumen vacío la primera vez)
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d db
+
+# 2) Esperar healthy
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+
+# 3) Restore (usuario/db según .env.prod)
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
+  pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-acl \
+  < almas_local.dump
+
+# Si pg_restore se queja de ownership/roles, alternativa:
+# docker compose ... exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < almas.sql
+# (en ese caso exportá con pg_dump -Fp en lugar de -Fc)
+
+# 4) Levantar backend/frontend
+# Tras restore con schema, el entrypoint sigue pudiendo correr alembic (debe ser no-op en head=002).
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+```
+
+Si el restore trae schema completo y querés evitar migrate al primer start:
+
+```bash
+# temporal en .env.prod
+SKIP_DB_MIGRATE=1
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+# después sacar SKIP_DB_MIGRATE o dejarlo en 0
+```
+
+### 3.5 Verificar datos
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec db \
+  psql -U almas -d almas -c "SELECT count(*) FROM users;"
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec db \
+  psql -U almas -d almas -c "SELECT version_num FROM alembic_version;"
+```
+
+Login en https://almas.lionapp.cloud con un usuario que ya existía en local.
+
+## 4. Deploy cotidiano (sin re-migrar DB)
+
+```bash
+cd /docker/app-almas
+# actualizar tags en .env.prod si hace falta
+docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+```
+
+El volumen `almas_pgdata` **no** se borra con `up -d`. Evitá `down -v` salvo destrucción deliberada.
+
+## 5. Checks post-deploy
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" https://almas.lionapp.cloud/health   # 200
+curl -sS -o /dev/null -w "%{http_code}\n" https://almas.lionapp.cloud/docs     # 404 en prod
+```
+
+## 6. Notas de seguridad
+
+- No publicar `5432` al host.
+- Docs OpenAPI desactivados con `APP_ENV=production`.
+- Solo el frontend tiene labels Traefik; `/api` va por Nginx interno.
+- Healthchecks cada 60s (menos carga en `dockerd`).

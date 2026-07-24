@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Almas API"
+    app_env: str = Field(default="development", validation_alias="APP_ENV")
     database_url: str = Field(
         default="postgresql://postgres:postgres@localhost:5432/almas",
         validation_alias="DATABASE_URL",
@@ -23,6 +24,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     max_upload_bytes: int = 10 * 1024 * 1024
     timezone_local: str = "America/Argentina/Buenos_Aires"
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() in {"prod", "production"}
 
 
 settings = Settings()
