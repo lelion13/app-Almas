@@ -99,6 +99,23 @@ def _fee_amount(raw: dict) -> Decimal | None:
     return total if found else None
 
 
+def _payer_fields(raw: dict) -> tuple[str | None, str | None, str | None]:
+    payer = raw.get("payer")
+    if not isinstance(payer, dict):
+        return None, None, None
+    email = payer.get("email")
+    email_s = str(email).strip() if email is not None and str(email).strip() else None
+    ident = payer.get("identification")
+    id_type = None
+    id_number = None
+    if isinstance(ident, dict):
+        t = ident.get("type")
+        n = ident.get("number")
+        id_type = str(t).strip() if t is not None and str(t).strip() else None
+        id_number = str(n).strip() if n is not None and str(n).strip() else None
+    return email_s, id_type, id_number
+
+
 def map_payment_to_movement(raw: dict) -> MovementDto:
     status_raw = str(raw.get("status") or "").strip().lower()
     meta = STATUS_META.get(status_raw)
@@ -123,6 +140,18 @@ def map_payment_to_movement(raw: dict) -> MovementDto:
 
     ext = raw.get("external_reference")
     desc = raw.get("description")
+    payer_email, payer_id_type, payer_id_number = _payer_fields(raw)
+
+    method = raw.get("payment_method_id")
+    ptype = raw.get("payment_type_id")
+    # Nested payment_method object (newer payloads)
+    pm_obj = raw.get("payment_method")
+    if isinstance(pm_obj, dict):
+        if not method and pm_obj.get("id") is not None:
+            method = pm_obj.get("id")
+        if not ptype and pm_obj.get("type") is not None:
+            ptype = pm_obj.get("type")
+
     return MovementDto(
         source_id=str(raw.get("id", "")),
         transaction_date=parsed_date,
@@ -134,6 +163,11 @@ def map_payment_to_movement(raw: dict) -> MovementDto:
         description=str(desc) if desc is not None else None,
         external_reference=str(ext) if ext is not None and str(ext).strip() else None,
         fee_amount=_fee_amount(raw),
+        payer_email=payer_email,
+        payer_id_type=payer_id_type,
+        payer_id_number=payer_id_number,
+        payment_method=str(method).strip() if method is not None and str(method).strip() else None,
+        payment_type=str(ptype).strip() if ptype is not None and str(ptype).strip() else None,
     )
 
 

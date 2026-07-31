@@ -27,7 +27,25 @@ type MovementRow = {
   description: string | null;
   external_reference: string | null;
   fee_amount: string | null;
+  payer_email: string | null;
+  payer_id_type: string | null;
+  payer_id_number: string | null;
+  payment_method: string | null;
+  payment_type: string | null;
 };
+
+function formatDocumento(m: MovementRow): string {
+  if (m.payer_id_type && m.payer_id_number) return `${m.payer_id_type} ${m.payer_id_number}`;
+  if (m.payer_id_number) return m.payer_id_number;
+  return "—";
+}
+
+function formatMedio(m: MovementRow): string {
+  if (m.payment_type && m.payment_method && m.payment_type !== m.payment_method) {
+    return `${m.payment_type} · ${m.payment_method}`;
+  }
+  return m.payment_type || m.payment_method || "—";
+}
 
 function daysBetween(from: string, to: string): number {
   const a = new Date(from);
@@ -178,7 +196,20 @@ export default function ConciliacionPage() {
       if (currencyFilter !== "all" && m.currency !== currencyFilter) return false;
       if (textFilter.trim()) {
         const q = textFilter.trim().toLowerCase();
-        const blob = `${m.source_id} ${m.description ?? ""} ${m.external_reference ?? ""} ${m.transaction_type_label}`.toLowerCase();
+        const blob = [
+          m.source_id,
+          m.description,
+          m.external_reference,
+          m.transaction_type_label,
+          m.payer_email,
+          m.payer_id_type,
+          m.payer_id_number,
+          m.payment_method,
+          m.payment_type,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
         if (!blob.includes(q)) return false;
       }
       return true;
@@ -411,7 +442,7 @@ export default function ConciliacionPage() {
             </select>
             <input
               className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Filtrar texto (id, descripción, ref.)"
+              placeholder="Filtrar (id, DNI/CUIT, email, ref., descripción…)"
               value={textFilter}
               onChange={(e) => setTextFilter(e.target.value)}
               disabled={loadingMovements}
@@ -427,6 +458,9 @@ export default function ConciliacionPage() {
                   <th className="px-3 py-2">Grupo</th>
                   <th className="px-3 py-2">Monto</th>
                   <th className="px-3 py-2">Moneda</th>
+                  <th className="px-3 py-2">Medio</th>
+                  <th className="px-3 py-2">Documento</th>
+                  <th className="px-3 py-2">Email</th>
                   <th className="px-3 py-2">ID</th>
                   <th className="px-3 py-2">Ref. externa</th>
                   <th className="px-3 py-2">Descripción</th>
@@ -435,8 +469,8 @@ export default function ConciliacionPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-6 text-slate-500">
-                      {loadingMovements ? "Esperando reporte…" : "Sin resultados."}
+                    <td colSpan={11} className="px-3 py-6 text-slate-500">
+                      {loadingMovements ? "Consultando…" : "Sin resultados."}
                     </td>
                   </tr>
                 ) : (
@@ -449,6 +483,9 @@ export default function ConciliacionPage() {
                       <td className="px-3 py-2">{BUCKET_LABEL[m.bucket]}</td>
                       <td className="px-3 py-2">{m.amount}</td>
                       <td className="px-3 py-2">{m.currency || "—"}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs">{formatMedio(m)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{formatDocumento(m)}</td>
+                      <td className="px-3 py-2 text-xs">{m.payer_email ?? "—"}</td>
                       <td className="px-3 py-2 font-mono text-xs">{m.source_id || "—"}</td>
                       <td className="px-3 py-2">{m.external_reference ?? "—"}</td>
                       <td className="px-3 py-2">{m.description ?? "—"}</td>

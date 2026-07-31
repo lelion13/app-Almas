@@ -51,6 +51,11 @@ class MovementDto(BaseModel):
     description: str | None = None
     external_reference: str | None = None
     fee_amount: Decimal | None = None
+    payer_email: str | None = None
+    payer_id_type: str | None = None
+    payer_id_number: str | None = None
+    payment_method: str | None = None
+    payment_type: str | None = None
 
 
 class MovementsSearchResponse(BaseModel):

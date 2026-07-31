@@ -58,7 +58,13 @@ def test_map_payment_approved_and_refunded() -> None:
             "status": "approved",
             "description": "Cuota",
             "external_reference": "SF-1",
+            "payment_method_id": "account_money",
+            "payment_type_id": "account_money",
             "fee_details": [{"amount": 50}],
+            "payer": {
+                "email": "a@b.com",
+                "identification": {"type": "DNI", "number": "30111222"},
+            },
         }
     )
     assert cobro.source_id == "123"
@@ -67,6 +73,11 @@ def test_map_payment_approved_and_refunded() -> None:
     assert cobro.amount == Decimal("1500.5")
     assert cobro.fee_amount == Decimal("50")
     assert cobro.external_reference == "SF-1"
+    assert cobro.payer_email == "a@b.com"
+    assert cobro.payer_id_type == "DNI"
+    assert cobro.payer_id_number == "30111222"
+    assert cobro.payment_method == "account_money"
+    assert cobro.payment_type == "account_money"
     assert cobro.transaction_date is not None
     assert cobro.transaction_date.day == 2
 
@@ -83,3 +94,5 @@ def test_map_payment_approved_and_refunded() -> None:
     assert devol.bucket == "egreso"
     assert devol.transaction_type == "REFUND"
     assert devol.transaction_type_label == "Devolución"
+    assert devol.payer_email is None
+    assert devol.payer_id_number is None
