@@ -11,10 +11,11 @@
 ## Spec-Driven Development (source of truth)
 - OpenSpec root: `openspec/`
 - Main specs: `openspec/specs/{domain}/spec.md`
-- Domains: `platform`, `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`
+- Domains: `platform`, `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `mercado-pago`
 - New behavior: propose/spec/design/tasks under `openspec/changes/{change-name}/`, then archive into main specs
 - Excel/cierres detail supplement: `docs/monthly-closings-spec.md`
 - Deploy runbook: `docs/vps-deploy.md`
+- MP Conciliación lessons (errors / out of scope): `docs/mp-conciliation-lessons.md`
 
 ## Working Agreements
 - Keep changes scoped to the request; avoid unrelated refactors.
@@ -46,4 +47,4 @@
 - `frontend/` React app with components, pages, hooks, services, and tests.
 - `backend/` FastAPI app with `api/`, `schemas/`, `services/`, `repositories/`, and tests.
 - `openspec/` SDD specs and change proposals.
-- `docs/` project docs (`quick-map.md`, `runbook.md`, `vps-deploy.md`, architecture/auth notes).
+- `docs/` project docs (`quick-map.md`, `runbook.md`, `vps-deploy.md`, `mp-conciliation-lessons.md`).

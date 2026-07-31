@@ -3,7 +3,7 @@ import { Navigate, useSearchParams } from "react-router-dom";
 import { apiFetch, ApiError } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
 
-type Tab = "cuentas" | "ingresos";
+type Tab = "cuentas" | "movimientos";
 
 type MpAccount = {
   id: string;
@@ -16,14 +16,17 @@ type MpAccount = {
   updated_at: string;
 };
 
-type PaymentRow = {
-  id: string;
-  date: string | null;
+type MovementRow = {
+  source_id: string;
+  transaction_date: string | null;
+  transaction_type: string;
+  transaction_type_label: string;
+  bucket: "ingreso" | "egreso" | "otro";
   amount: string;
   currency: string;
-  status: string;
   description: string | null;
-  payer_reference: string | null;
+  external_reference: string | null;
+  fee_amount: string | null;
 };
 
 function daysBetween(from: string, to: string): number {
@@ -31,6 +34,12 @@ function daysBetween(from: string, to: string): number {
   const b = new Date(to);
   return (b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24);
 }
+
+const BUCKET_LABEL: Record<MovementRow["bucket"], string> = {
+  ingreso: "Ingreso",
+  egreso: "Egreso",
+  otro: "Otro",
+};
 
 export default function ConciliacionPage() {
   const { me } = useAuth();
@@ -41,12 +50,14 @@ export default function ConciliacionPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loadingMovements, setLoadingMovements] = useState(false);
 
   const [accountId, setAccountId] = useState("");
   const [fromDt, setFromDt] = useState("");
   const [toDt, setToDt] = useState("");
-  const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [movements, setMovements] = useState<MovementRow[]>([]);
+  const [bucketFilter, setBucketFilter] = useState<"all" | "ingreso" | "egreso">("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [currencyFilter, setCurrencyFilter] = useState("all");
   const [textFilter, setTextFilter] = useState("");
 
@@ -119,7 +130,7 @@ export default function ConciliacionPage() {
     }
   }
 
-  async function searchPayments(e: React.FormEvent) {
+  async function searchMovements(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setMsg(null);
@@ -135,10 +146,11 @@ export default function ConciliacionPage() {
       setErr("El rango no puede superar 60 días.");
       return;
     }
+    setLoadingMovements(true);
     setBusy(true);
     try {
-      const res = await apiFetch<{ items: PaymentRow[] }>(
-        `/api/v1/mp/accounts/${accountId}/payments/search`,
+      const res = await apiFetch<{ items: MovementRow[] }>(
+        `/api/v1/mp/accounts/${accountId}/movements/search`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -148,35 +160,42 @@ export default function ConciliacionPage() {
           }),
         }
       );
-      setPayments(res.items);
-      setMsg(`${res.items.length} pagos encontrados.`);
+      setMovements(res.items);
+      setMsg(`${res.items.length} movimientos encontrados.`);
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "No se pudieron consultar los pagos.");
+      setErr(e instanceof ApiError ? e.message : "No se pudieron consultar los movimientos.");
+      setMovements([]);
     } finally {
       setBusy(false);
+      setLoadingMovements(false);
     }
   }
 
   const filtered = useMemo(() => {
-    return payments.filter((p) => {
-      if (statusFilter !== "all" && p.status !== statusFilter) return false;
-      if (currencyFilter !== "all" && p.currency !== currencyFilter) return false;
+    return movements.filter((m) => {
+      if (bucketFilter !== "all" && m.bucket !== bucketFilter) return false;
+      if (typeFilter !== "all" && m.transaction_type !== typeFilter) return false;
+      if (currencyFilter !== "all" && m.currency !== currencyFilter) return false;
       if (textFilter.trim()) {
         const q = textFilter.trim().toLowerCase();
-        const blob = `${p.id} ${p.description ?? ""} ${p.payer_reference ?? ""}`.toLowerCase();
+        const blob = `${m.source_id} ${m.description ?? ""} ${m.external_reference ?? ""} ${m.transaction_type_label}`.toLowerCase();
         if (!blob.includes(q)) return false;
       }
       return true;
     });
-  }, [payments, statusFilter, currencyFilter, textFilter]);
+  }, [movements, bucketFilter, typeFilter, currencyFilter, textFilter]);
 
-  const statuses = useMemo(
-    () => Array.from(new Set(payments.map((p) => p.status).filter(Boolean))).sort(),
-    [payments]
-  );
+  const types = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of movements) {
+      if (m.transaction_type) map.set(m.transaction_type, m.transaction_type_label);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [movements]);
+
   const currencies = useMemo(
-    () => Array.from(new Set(payments.map((p) => p.currency).filter(Boolean))).sort(),
-    [payments]
+    () => Array.from(new Set(movements.map((m) => m.currency).filter(Boolean))).sort(),
+    [movements]
   );
 
   const tabCls = (t: Tab) =>
@@ -184,13 +203,28 @@ export default function ConciliacionPage() {
       tab === t ? "bg-brand-100 text-brand-900" : "text-slate-600 hover:bg-slate-100"
     }`;
 
+  const bucketBtn = (value: typeof bucketFilter, label: string) => (
+    <button
+      type="button"
+      key={value}
+      onClick={() => setBucketFilter(value)}
+      className={`rounded-lg px-3 py-1.5 text-sm ${
+        bucketFilter === value
+          ? "bg-brand-700 text-white"
+          : "border border-slate-200 text-slate-700 hover:bg-slate-50"
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Conciliación</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Conectá cuentas de Mercado Pago y consultá ingresos por período (sin guardar pagos ni vincular a
-          cierres).
+          Conectá cuentas de Mercado Pago y consultá movimientos del dinero en cuenta (ingresos y egresos,
+          sin guardar ni vincular a cierres).
         </p>
       </div>
 
@@ -198,15 +232,15 @@ export default function ConciliacionPage() {
         <button type="button" className={tabCls("cuentas")} onClick={() => setTab("cuentas")}>
           Cuentas Mercado Pago
         </button>
-        <button type="button" className={tabCls("ingresos")} onClick={() => setTab("ingresos")}>
-          Ingresos
+        <button type="button" className={tabCls("movimientos")} onClick={() => setTab("movimientos")}>
+          Movimientos
         </button>
       </div>
 
       {err && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{err}</div>
       )}
-      {msg && (
+      {msg && !loadingMovements && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           {msg}
         </div>
@@ -271,15 +305,35 @@ export default function ConciliacionPage() {
         </div>
       )}
 
-      {tab === "ingresos" && (
-        <div className="space-y-4">
-          <form onSubmit={searchPayments} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 max-w-4xl">
+      {tab === "movimientos" && (
+        <div className="relative space-y-4">
+          {loadingMovements && (
+            <div
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-xl bg-white/85 backdrop-blur-[2px] min-h-[280px]"
+              role="status"
+              aria-live="polite"
+            >
+              <div
+                className="h-10 w-10 rounded-full border-2 border-brand-200 border-t-brand-700 animate-spin"
+                aria-hidden
+              />
+              <div className="text-center px-4">
+                <p className="text-sm font-medium text-slate-900">Generando reporte en Mercado Pago…</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Puede demorar unos segundos o minutos según el volumen del período.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={searchMovements} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 max-w-4xl">
             <label className="text-sm space-y-1">
               <span className="text-slate-600">Cuenta</span>
               <select
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
+                disabled={loadingMovements}
               >
                 <option value="">Seleccionar…</option>
                 {accounts
@@ -298,6 +352,7 @@ export default function ConciliacionPage() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 value={fromDt}
                 onChange={(e) => setFromDt(e.target.value)}
+                disabled={loadingMovements}
               />
             </label>
             <label className="text-sm space-y-1">
@@ -307,29 +362,37 @@ export default function ConciliacionPage() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 value={toDt}
                 onChange={(e) => setToDt(e.target.value)}
+                disabled={loadingMovements}
               />
             </label>
             <div className="flex items-end">
               <button
                 type="submit"
-                disabled={busy}
+                disabled={busy || loadingMovements}
                 className="w-full rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
               >
-                {busy ? "Consultando…" : "Consultar"}
+                {loadingMovements ? "Generando…" : "Consultar"}
               </button>
             </div>
           </form>
 
+          <div className="flex flex-wrap gap-2 items-center">
+            {bucketBtn("all", "Todos")}
+            {bucketBtn("ingreso", "Ingresos")}
+            {bucketBtn("egreso", "Egresos")}
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-2 max-w-4xl">
             <select
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              disabled={loadingMovements}
             >
-              <option value="all">Todos los estados</option>
-              {statuses.map((s) => (
-                <option key={s} value={s}>
-                  {s}
+              <option value="all">Todos los tipos</option>
+              {types.map(([code, label]) => (
+                <option key={code} value={code}>
+                  {label}
                 </option>
               ))}
             </select>
@@ -337,6 +400,7 @@ export default function ConciliacionPage() {
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
               value={currencyFilter}
               onChange={(e) => setCurrencyFilter(e.target.value)}
+              disabled={loadingMovements}
             >
               <option value="all">Todas las monedas</option>
               {currencies.map((c) => (
@@ -347,9 +411,10 @@ export default function ConciliacionPage() {
             </select>
             <input
               className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Filtrar texto (id, descripción, pagador)"
+              placeholder="Filtrar texto (id, descripción, ref.)"
               value={textFilter}
               onChange={(e) => setTextFilter(e.target.value)}
+              disabled={loadingMovements}
             />
           </div>
 
@@ -357,34 +422,36 @@ export default function ConciliacionPage() {
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-3 py-2">ID</th>
                   <th className="px-3 py-2">Fecha</th>
+                  <th className="px-3 py-2">Tipo</th>
+                  <th className="px-3 py-2">Grupo</th>
                   <th className="px-3 py-2">Monto</th>
                   <th className="px-3 py-2">Moneda</th>
-                  <th className="px-3 py-2">Estado</th>
+                  <th className="px-3 py-2">ID</th>
+                  <th className="px-3 py-2">Ref. externa</th>
                   <th className="px-3 py-2">Descripción</th>
-                  <th className="px-3 py-2">Pagador</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-slate-500">
-                      Sin resultados.
+                    <td colSpan={8} className="px-3 py-6 text-slate-500">
+                      {loadingMovements ? "Esperando reporte…" : "Sin resultados."}
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((p) => (
-                    <tr key={p.id} className="border-t border-slate-100">
-                      <td className="px-3 py-2 font-mono text-xs">{p.id}</td>
+                  filtered.map((m, idx) => (
+                    <tr key={`${m.source_id}-${m.transaction_type}-${idx}`} className="border-t border-slate-100">
                       <td className="px-3 py-2 whitespace-nowrap">
-                        {p.date ? new Date(p.date).toLocaleString() : "—"}
+                        {m.transaction_date ? new Date(m.transaction_date).toLocaleString() : "—"}
                       </td>
-                      <td className="px-3 py-2">{p.amount}</td>
-                      <td className="px-3 py-2">{p.currency}</td>
-                      <td className="px-3 py-2">{p.status}</td>
-                      <td className="px-3 py-2">{p.description ?? "—"}</td>
-                      <td className="px-3 py-2">{p.payer_reference ?? "—"}</td>
+                      <td className="px-3 py-2">{m.transaction_type_label}</td>
+                      <td className="px-3 py-2">{BUCKET_LABEL[m.bucket]}</td>
+                      <td className="px-3 py-2">{m.amount}</td>
+                      <td className="px-3 py-2">{m.currency || "—"}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{m.source_id || "—"}</td>
+                      <td className="px-3 py-2">{m.external_reference ?? "—"}</td>
+                      <td className="px-3 py-2">{m.description ?? "—"}</td>
                     </tr>
                   ))
                 )}

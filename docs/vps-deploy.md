@@ -47,10 +47,10 @@ Antes del dump, en la DB local:
 SELECT version_num FROM alembic_version;
 ```
 
-El código de `main` llega hasta **`002`**.
+El código de producto llega hasta **`004`** (`003_mp_accounts` + `004_mp_accounts_scopes_text`).
 
-- Si ves **`001` o `002`**: OK, dump directo.
-- Si ves **`003`** (quedó de la feature MP descartada): limpiá antes del dump:
+- Si ves **`001`–`004`** alineado con el repo: OK (en dump viejo, el entrypoint sube a head).
+- Si ves un **`003` huérfano** de la feature MP de reconciliación **descartada** (tablas `income_reconciliations` / `mp_income_lines` / `mp_import_batches` y sin el `003_mp_accounts` actual): limpiá antes del dump:
 
 ```sql
 DROP TABLE IF EXISTS income_reconciliations CASCADE;
@@ -59,6 +59,10 @@ DROP TABLE IF EXISTS mp_import_batches CASCADE;
 DROP TABLE IF EXISTS mp_accounts CASCADE;
 UPDATE alembic_version SET version_num = '002';
 ```
+
+Lecciones OAuth / Movimientos MP: `docs/mp-conciliation-lessons.md`.
+
+Nota: la consulta de Movimientos puede demorar hasta ~2 min (reporte async); Nginx proxy usa `proxy_read_timeout 180s`.
 
 ### 3.2 Dump local (Windows / PowerShell)
 
@@ -100,7 +104,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
 # (en ese caso exportá con pg_dump -Fp en lugar de -Fc)
 
 # 4) Levantar backend/frontend
-# Tras restore con schema, el entrypoint sigue pudiendo correr alembic (debe ser no-op en head=002).
+# Tras restore con schema, el entrypoint corre alembic hasta head=004 (no-op si ya está en 004).
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 

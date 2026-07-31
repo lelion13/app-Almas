@@ -24,16 +24,54 @@ Static SPA assets MUST fall back to `index.html`. Production frontend build MUST
 
 ### Requirement: Images and config
 
-Images MUST come from `ghcr.io/lelion13/app-almas-backend` and `app-almas-frontend` with explicit tags (SHA or branch). `.env.prod` MUST supply at least `DATABASE_URL`, `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGINS=https://almas.lionapp.cloud`, `APP_ENV=production`, and image tags. Secrets MUST NOT be committed; use `.env.prod.example` as template.
+Images MUST come from `ghcr.io/lelion13/app-almas-backend` and `app-almas-frontend` with explicit tags (SHA or branch). `.env.prod` MUST supply at least `DATABASE_URL`, `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGINS=https://almas.lionapp.cloud`, `APP_ENV=production`, image tags, **and when Conciliación is enabled the MP_* variables** (see Mercado Pago environment configuration). Secrets MUST NOT be committed; use `.env.prod.example` as template.
+
+#### Scenario: Prod env documents MP placeholders
+- **GIVEN** `.env.prod.example`
+- **WHEN** an operator prepares production
+- **THEN** MP OAuth and encryption placeholders MUST be present and documented
+
+### Requirement: Mercado Pago environment configuration
+
+Production and local environments that enable Conciliación MUST configure:
+- `MP_CLIENT_ID` — Mercado Pago application **Client ID** (not Public Key)
+- `MP_CLIENT_SECRET` — application **Client Secret** (not Access Token)
+- `MP_REDIRECT_URI` — static OAuth redirect URI registered in the MP application (MUST match exactly; prod: `https://almas.lionapp.cloud/api/v1/mp/oauth/callback`)
+- `MP_OAUTH_FRONTEND_REDIRECT` — SPA return URL after callback (prod: `https://almas.lionapp.cloud/conciliacion`)
+- `MP_TOKEN_ENCRYPTION_KEY` — Fernet key for encrypting OAuth tokens at rest
+- `MP_API_BASE_URL` — default `https://api.mercadopago.com` (MAY be overridden)
+
+These values MUST appear in `.env.example` / `.env.prod.example` as placeholders and MUST NOT be committed with real secrets. `docs/vps-deploy.md` and `docs/mp-conciliation-lessons.md` MUST document redirect URI registration, PKCE = Sí in the MP app panel, and encryption key rotation implications (key loss → re-OAuth).
+
+#### Scenario: Missing encryption key
+- **GIVEN** Conciliación OAuth succeeds but `MP_TOKEN_ENCRYPTION_KEY` is unset or invalid
+- **WHEN** the backend attempts to store tokens
+- **THEN** the operation MUST fail safely without writing plaintext tokens
+
+### Requirement: OAuth redirect reachability in prod
+
+In production, the configured `MP_REDIRECT_URI` MUST be reachable through the public site (Nginx `/api/` proxy to backend). Traefik/Nginx routing MUST NOT block the callback path.
+
+#### Scenario: Callback via same origin
+- **GIVEN** production at `almas.lionapp.cloud`
+- **WHEN** Mercado Pago redirects to `MP_REDIRECT_URI`
+- **THEN** the request MUST reach the Almas backend OAuth handler successfully
 
 ### Requirement: Migrations
 
-Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`002`**. Migration `003` (Mercado Pago reconciliation) is OUT OF PRODUCT SCOPE; databases restored from local dumps that report `003` MUST be cleaned to `002` (drop MP tables if present) before backend start.
+Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`004`** (`003_mp_accounts` + `004_mp_accounts_scopes_text`).
 
-#### Scenario: Restored dump at revision 003
-- **Given** `alembic_version = 003` after restore
-- **When** backend starts with only migrations 001–002 in the image
-- **Then** startup MUST fail until revision is corrected to `002`
+Legacy note: if a restored dump still reports an orphan revision `003` from a **discarded** earlier MP reconciliation attempt that is **not** the current `003_mp_accounts` in the repo, operators MUST clean that revision before upgrade (drop orphan MP tables if present and stamp to a known good revision). New installs MUST only apply migrations present in the shipped image.
+
+#### Scenario: Fresh deploy applies accounts migration
+- **GIVEN** an empty database and images containing MP account migrations
+- **WHEN** backend starts with migrate enabled
+- **THEN** Alembic MUST reach head `004` including MP accounts storage with `scopes` as TEXT
+
+#### Scenario: Restored dump at unknown orphan 003
+- **GIVEN** `alembic_version` points at a discarded MP reconciliation revision not in the image
+- **WHEN** backend starts
+- **THEN** startup MUST fail until revision is corrected to a known revision before upgrade
 
 ### Requirement: Health and docs
 
@@ -57,10 +95,11 @@ Dump client major version MUST be compatible with the Postgres image major (18).
 Canonical runbooks:
 - `docs/vps-deploy.md`
 - `docs/runbook.md`
+- `docs/mp-conciliation-lessons.md`
 - `.env.prod.example`
 - `docker-compose.prod.yml`
 
 ## Out of scope
 - Shared Postgres across apps
 - Exposing backend as a separate Traefik router
-- Mercado Pago reconciliation feature (not mounted in API)
+- MP ↔ SigueFit auto-match / webhooks / egresos (see `mercado-pago` non-goals)

@@ -15,6 +15,7 @@ Baseline technology and architecture conventions for app-Almas. Future changes M
 | Auth | JWT (HS256) + bcrypt password hashes |
 | Excel | openpyxl for SigueFit and expense imports |
 | Prod packaging | Docker multi-stage images + Compose + Traefik + GHCR |
+| Mercado Pago | OAuth + Payments search via `httpx`; tokens at rest via Fernet (`cryptography`) |
 
 ### Requirement: Backend layering
 
@@ -26,7 +27,7 @@ New UI MUST use pages under `frontend/src/pages`, shared API helper `services/ap
 
 ### Requirement: Security
 
-Protected non-public API routes MUST require JWT. Passwords MUST be bcrypt-hashed. Secrets MUST come from environment variables. Failures MUST avoid user enumeration where applicable (login).
+Protected non-public API routes MUST require JWT. Passwords MUST be bcrypt-hashed. Secrets MUST come from environment variables. Failures MUST avoid user enumeration where applicable (login). MP OAuth tokens MUST be Fernet-encrypted at rest and MUST NEVER appear in logs or API list responses.
 
 ### Requirement: Spec-driven changes
 
@@ -39,16 +40,25 @@ Behavioral changes SHOULD go through OpenSpec (`openspec/changes/{name}/`) and m
 - `teachers`
 - `deployment`
 - `platform` (this document)
+- `mercado-pago`
 
 ### Requirement: Product scope (current)
 
-In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy.
+In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy, **and admin Conciliación Mercado Pago V1** (OAuth multi-account connect + on-demand payment income display without persistence or SigueFit matching).
+
+Behavioral source of truth for MP: `openspec/specs/mercado-pago/spec.md`. Lessons/ops: `docs/mp-conciliation-lessons.md`.
 
 Explicitly out of product scope today:
-- Mercado Pago reconciliation / auto-match
+- Mercado Pago ↔ SigueFit reconciliation / auto-match / webhooks / egresos (beyond V1 Conciliación)
 - Self-service password reset UI
 - Public user registration API
-- Refresh tokens
+- Refresh tokens for Almas JWT sessions
+
+#### Scenario: Conciliación is in product scope for admin
+- **GIVEN** the platform product scope
+- **WHEN** an admin uses Conciliación
+- **THEN** OAuth account linking and on-demand income fetch MUST be considered in-scope behavior
 
 ## Related
 - `AGENTS.md`, `docs/quick-map.md`, `openspec/config.yaml`
+- `openspec/specs/mercado-pago/spec.md`

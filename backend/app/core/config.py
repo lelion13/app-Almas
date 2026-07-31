@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     mp_api_base_url: str = Field(default="https://api.mercadopago.com", validation_alias="MP_API_BASE_URL")
     mp_auth_base_url: str = Field(default="https://auth.mercadopago.com", validation_alias="MP_AUTH_BASE_URL")
     mp_api_timeout_seconds: int = Field(default=20, validation_alias="MP_API_TIMEOUT_SECONDS")
+    mp_report_poll_interval_seconds: float = Field(
+        default=2.0, validation_alias="MP_REPORT_POLL_INTERVAL_SECONDS"
+    )
+    mp_report_poll_timeout_seconds: float = Field(
+        default=120.0, validation_alias="MP_REPORT_POLL_TIMEOUT_SECONDS"
+    )
     mp_oauth_frontend_redirect: str = Field(
         default="http://localhost:5173/conciliacion",
         validation_alias="MP_OAUTH_FRONTEND_REDIRECT",

@@ -5,8 +5,9 @@ Fast navigation for app-Almas. **Behavioral source of truth:** `openspec/specs/*
 
 ## SDD (OpenSpec)
 - Config: `openspec/config.yaml`
-- Domains: `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `platform`
+- Domains: `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `platform`, `mercado-pago`
 - Active changes: `openspec/changes/{name}/` → archive merges into main specs
+- MP Conciliación lessons: `docs/mp-conciliation-lessons.md`
 - Skill registry: `.atl/skill-registry.md`
 
 ## Suggested Structure
@@ -20,7 +21,7 @@ Fast navigation for app-Almas. **Behavioral source of truth:** `openspec/specs/*
 - `backend/app/repositories/` database access logic.
 - `backend/app/core/` config, security, dependencies.
 - `backend/tests/` API and service tests.
-- `docs/` runbooks (`vps-deploy.md`, `runbook.md`, `monthly-closings-spec.md` Excel detail).
+- `docs/` runbooks (`vps-deploy.md`, `runbook.md`, `mp-conciliation-lessons.md`, `monthly-closings-spec.md` Excel detail).
 
 ## Common Tasks
 - Add a protected endpoint: `backend/app/api/` + auth dependency + `schemas/` + update OpenSpec domain.

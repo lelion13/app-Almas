@@ -1,0 +1,16 @@
+change: mp-movements-v1
+status: applied
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: pending
+  archive: pending
+updated: 2026-07-31
+notes: |
+  Applied: Account Money movements replace Payments/Ingresos.
+  POST /api/v1/mp/accounts/{id}/movements/search
+  Unit tests 5 passed. Manual verify in prod after deploy.

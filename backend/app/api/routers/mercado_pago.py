@@ -11,12 +11,12 @@ from app.repositories import mp_account_repo
 from app.schemas.mercado_pago import (
     MpAccountPatch,
     MpAccountResponse,
+    MovementsSearchRequest,
+    MovementsSearchResponse,
     OAuthStartRequest,
     OAuthStartResponse,
-    PaymentsSearchRequest,
-    PaymentsSearchResponse,
 )
-from app.services import mp_oauth_service, mp_payments_service
+from app.services import mp_account_money_service, mp_oauth_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mp", tags=["mercado-pago"])
@@ -61,7 +61,6 @@ def oauth_callback(
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("OAuth callback failed")
-        # Short operational hint without leaking secrets
         hint = type(exc).__name__
         return RedirectResponse(
             mp_oauth_service.frontend_redirect(False, error=quote(f"oauth_failed:{hint}", safe="")),
@@ -97,17 +96,17 @@ def patch_account(
     return MpAccountResponse.model_validate(account)
 
 
-@router.post("/accounts/{account_id}/payments/search", response_model=PaymentsSearchResponse)
-def search_payments(
+@router.post("/accounts/{account_id}/movements/search", response_model=MovementsSearchResponse)
+def search_movements(
     account_id: UUID,
-    body: PaymentsSearchRequest,
+    body: MovementsSearchRequest,
     _admin: AdminOnly,
     db: Session = Depends(get_db),
-) -> PaymentsSearchResponse:
-    items = mp_payments_service.search_payments(
+) -> MovementsSearchResponse:
+    items = mp_account_money_service.search_movements(
         db,
         account_id=account_id,
         from_datetime=body.from_datetime,
         to_datetime=body.to_datetime,
     )
-    return PaymentsSearchResponse(items=items)
+    return MovementsSearchResponse(items=items)

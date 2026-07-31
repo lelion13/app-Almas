@@ -19,12 +19,13 @@
 - API bajo `/api/v1`: cierres, import `.xlsx`, resúmenes por categoría/método, gastos manuales, profesoras (admin).
 - Detalle funcional en `docs/monthly-closings-spec.md`.
 
-## Conciliación Mercado Pago (V1)
-- Menú admin **Conciliación** (`/conciliacion`): pestañas Cuentas e Ingresos.
-- OAuth multi-cuenta; tokens cifrados en DB; ingresos on-demand (no se persisten; sin match a SigueFit).
-- Env: ver `backend/.env.example` / `.env.prod.example` (`MP_*`).
-- Redirect OAuth backend: `{origin}/api/v1/mp/oauth/callback` (debe coincidir con la app en MP).
-- Specs: `openspec/changes/mp-conciliation-v1/` (hasta archive).
+## Conciliación Mercado Pago
+- Menú admin **Conciliación** (`/conciliacion`): pestañas Cuentas y **Movimientos**.
+- Movimientos usan el **Account Money Report** de MP (ingresos + egresos: cobros, retiros, devoluciones, etc.).
+- Consulta on-demand con espera (spinner); no se persisten filas; sin match a SigueFit.
+- Env: `MP_*` + `MP_REPORT_POLL_INTERVAL_SECONDS` / `MP_REPORT_POLL_TIMEOUT_SECONDS`.
+- Specs: `openspec/specs/mercado-pago/spec.md` · change activo: `openspec/changes/mp-movements-v1/`
+- Lecciones: `docs/mp-conciliation-lessons.md`
 
 ## Auth Troubleshooting
 - `401 Unauthorized`: verify JWT secret, token expiry, and auth header format.

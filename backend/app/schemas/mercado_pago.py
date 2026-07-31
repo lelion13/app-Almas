@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -31,20 +32,26 @@ class MpAccountPatch(BaseModel):
     active: bool | None = None
 
 
-class PaymentsSearchRequest(BaseModel):
+class MovementsSearchRequest(BaseModel):
     from_datetime: datetime
     to_datetime: datetime
 
 
-class PaymentDto(BaseModel):
-    id: str
-    date: datetime | None
+MovementBucket = Literal["ingreso", "egreso", "otro"]
+
+
+class MovementDto(BaseModel):
+    source_id: str
+    transaction_date: datetime | None
+    transaction_type: str
+    transaction_type_label: str
+    bucket: MovementBucket
     amount: Decimal
     currency: str
-    status: str
-    description: str | None
-    payer_reference: str | None
+    description: str | None = None
+    external_reference: str | None = None
+    fee_amount: Decimal | None = None
 
 
-class PaymentsSearchResponse(BaseModel):
-    items: list[PaymentDto]
+class MovementsSearchResponse(BaseModel):
+    items: list[MovementDto]

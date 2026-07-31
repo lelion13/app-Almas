@@ -1,0 +1,18 @@
+change: mp-conciliation-v1
+status: archived
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: done
+  archive: done
+updated: 2026-07-31
+notes: |
+  Archived to openspec/changes/archive/2026-07-31-mp-conciliation-v1/.
+  Main specs: mercado-pago (new), platform + deployment updated (Alembic head 004).
+  Lessons outside change: docs/mp-conciliation-lessons.md.
+  Deferred: TestClient 5.2/5.3, staff smoke 8.3.
+  Prod smoke: OAuth + payments fetch OK after scopes TEXT (004).

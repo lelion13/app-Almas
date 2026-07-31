@@ -47,14 +47,14 @@
 
 - [x] 7.1 Update `docs/vps-deploy.md` and `docs/runbook.md` with MP OAuth redirect URIs (local + `almas.lionapp.cloud`) and encryption key notes
 - [x] 7.2 Note in runbook: generate Fernet key; register redirect in MP app dashboard
-- [ ] 7.3 After apply/verify, archive change and merge specs into `openspec/specs/mercado-pago/` (+ platform/deployment)
+- [x] 7.3 After apply/verify, archive change and merge specs into `openspec/specs/mercado-pago/` (+ platform/deployment); lessons in `docs/mp-conciliation-lessons.md`
 
 ## Phase 8: Verify (pre-push)
 
-- [ ] 8.1 Manual: OAuth connect (test/sandbox seller), list/rename/deactivate account
-- [ ] 8.2 Manual: fetch incomes ≤60 days; reject longer range; UI filters work; no secrets in Network responses
-- [ ] 8.3 Confirm staff cannot open `/conciliacion` or call MP APIs
-- [ ] 8.4 User pushes to git for GHCR → VPS deploy (out of agent apply unless requested)
+- [x] 8.1 Manual: OAuth connect (prod seller), list account (after scopes TEXT fix)
+- [x] 8.2 Manual: fetch incomes ≤60 days works in prod
+- [ ] 8.3 Confirm staff cannot open `/conciliacion` or call MP APIs (deferred / trust AdminOnly deps)
+- [x] 8.4 User deploys via git push → GHCR → VPS (done outside agent)
 
 ## Dependencies
 

@@ -6,7 +6,13 @@ from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
 from app.services import mp_crypto
-from app.services.mp_payments_service import MAX_RANGE_DAYS, _map_payment, _validate_range
+from app.services.mp_account_money_service import (
+    MAX_RANGE_DAYS,
+    _validate_range,
+    bucket_for_type,
+    label_for_type,
+    parse_settlement_csv,
+)
 
 
 def test_fernet_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -33,24 +39,29 @@ def test_range_allows_60_days() -> None:
     _validate_range(start, end)
 
 
-def test_map_payment_prefers_date_approved() -> None:
-    dto = _map_payment(
-        {
-            "id": 123,
-            "date_created": "2026-01-01T10:00:00.000-03:00",
-            "date_approved": "2026-01-02T11:00:00.000-03:00",
-            "transaction_amount": 1500.5,
-            "currency_id": "ARS",
-            "status": "approved",
-            "description": "Cuota",
-            "payer": {"email": "a@b.com"},
-        }
+def test_bucket_and_labels() -> None:
+    assert bucket_for_type("SETTLEMENT") == "ingreso"
+    assert bucket_for_type("WITHDRAWAL") == "egreso"
+    assert bucket_for_type("PAYOUT") == "egreso"
+    assert bucket_for_type("REFUND") == "egreso"
+    assert bucket_for_type("DISPUTE") == "otro"
+    assert label_for_type("SETTLEMENT") == "Cobro"
+    assert label_for_type("WITHDRAWAL") == "Retiro bancario"
+
+
+def test_parse_settlement_csv_semicolon() -> None:
+    csv_text = (
+        "SOURCE_ID;TRANSACTION_TYPE;TRANSACTION_DATE;TRANSACTION_AMOUNT;"
+        "TRANSACTION_CURRENCY;SETTLEMENT_NET_AMOUNT;EXTERNAL_REFERENCE;DESCRIPTION;FEE_AMOUNT\n"
+        "123;SETTLEMENT;2026-01-02T10:00:00Z;1000;ARS;950;ref1;Cuota;50\n"
+        "456;WITHDRAWAL;2026-01-03T12:00:00Z;500;ARS;500;;Retiro;0\n"
     )
-    assert dto.id == "123"
-    assert dto.amount == Decimal("1500.5")
-    assert dto.currency == "ARS"
-    assert dto.status == "approved"
-    assert dto.description == "Cuota"
-    assert dto.payer_reference == "a@b.com"
-    assert dto.date is not None
-    assert dto.date.day == 2
+    items = parse_settlement_csv(csv_text)
+    assert len(items) == 2
+    assert items[0].source_id == "123"
+    assert items[0].bucket == "ingreso"
+    assert items[0].amount == Decimal("950")
+    assert items[0].transaction_type_label == "Cobro"
+    assert items[0].external_reference == "ref1"
+    assert items[1].bucket == "egreso"
+    assert items[1].transaction_type_label == "Retiro bancario"
