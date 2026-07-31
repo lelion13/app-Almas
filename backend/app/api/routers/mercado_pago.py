@@ -1,5 +1,6 @@
 from urllib.parse import quote
 from uuid import UUID
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
@@ -17,6 +18,7 @@ from app.schemas.mercado_pago import (
 )
 from app.services import mp_oauth_service, mp_payments_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mp", tags=["mercado-pago"])
 
 
@@ -52,13 +54,17 @@ def oauth_callback(
         mp_oauth_service.complete_oauth_callback(db, code=code, state=state)
     except HTTPException as exc:
         detail = str(exc.detail) if exc.detail else "oauth_failed"
+        logger.warning("OAuth callback HTTPException: %s", detail)
         return RedirectResponse(
             mp_oauth_service.frontend_redirect(False, error=quote(detail, safe="")),
             status_code=status.HTTP_302_FOUND,
         )
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("OAuth callback failed")
+        # Short operational hint without leaking secrets
+        hint = type(exc).__name__
         return RedirectResponse(
-            mp_oauth_service.frontend_redirect(False, error="oauth_failed"),
+            mp_oauth_service.frontend_redirect(False, error=quote(f"oauth_failed:{hint}", safe="")),
             status_code=status.HTTP_302_FOUND,
         )
     return RedirectResponse(mp_oauth_service.frontend_redirect(True), status_code=status.HTTP_302_FOUND)

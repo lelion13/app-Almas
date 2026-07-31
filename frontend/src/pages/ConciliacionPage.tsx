@@ -75,7 +75,7 @@ export default function ConciliacionPage() {
       setTab("cuentas");
       void loadAccounts();
     } else {
-      setErr(params.get("detail") || "No se pudo completar OAuth con Mercado Pago.");
+      setErr(decodeURIComponent(params.get("detail") || "") || "No se pudo completar OAuth con Mercado Pago.");
     }
     params.delete("oauth");
     params.delete("detail");

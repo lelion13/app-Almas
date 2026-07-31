@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
@@ -16,6 +17,8 @@ from app.models.mp_account import MpAccount
 from app.models.user import User
 from app.repositories import mp_account_repo
 from app.services import mp_crypto
+
+logger = logging.getLogger(__name__)
 
 
 def _require_mp_app_config() -> None:
@@ -73,15 +76,22 @@ def _token_request(payload: dict) -> dict:
     with httpx.Client(timeout=settings.mp_api_timeout_seconds) as client:
         resp = client.post(url, json=payload)
     if resp.status_code >= 400:
+        # Do not log response body (may contain sensitive data); status only.
+        logger.warning("MP oauth/token failed status=%s", resp.status_code)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Mercado Pago rechazó el intercambio de tokens.",
+            detail=f"Mercado Pago rechazó el intercambio de tokens (HTTP {resp.status_code}).",
         )
     data = resp.json()
-    if not data.get("access_token") or not data.get("refresh_token"):
+    if not data.get("access_token"):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Respuesta OAuth de Mercado Pago incompleta.",
+            detail="Respuesta OAuth de Mercado Pago sin access_token.",
+        )
+    if not data.get("refresh_token"):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Respuesta OAuth de Mercado Pago sin refresh_token.",
         )
     return data
 
