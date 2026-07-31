@@ -6,12 +6,21 @@
 - Database: PostgreSQL.
 - Auth: JWT-based authentication with protected routes.
 - Password security: bcrypt hashing only (never plain text, never reversible encryption).
+- Prod: Docker Compose + Traefik + GHCR → `https://almas.lionapp.cloud`.
+
+## Spec-Driven Development (source of truth)
+- OpenSpec root: `openspec/`
+- Main specs: `openspec/specs/{domain}/spec.md`
+- Domains: `platform`, `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`
+- New behavior: propose/spec/design/tasks under `openspec/changes/{change-name}/`, then archive into main specs
+- Excel/cierres detail supplement: `docs/monthly-closings-spec.md`
+- Deploy runbook: `docs/vps-deploy.md`
 
 ## Working Agreements
 - Keep changes scoped to the request; avoid unrelated refactors.
 - Prioritize readability, maintainability, and clear naming.
 - Add concise comments only when logic is not obvious.
-- Add or update documentation when behavior or setup changes.
+- Add or update OpenSpec (and docs) when behavior or setup changes.
 - Prefer secure defaults and explicit error handling.
 
 ## Architecture Conventions
@@ -36,4 +45,5 @@
 ## Suggested Project Layout
 - `frontend/` React app with components, pages, hooks, services, and tests.
 - `backend/` FastAPI app with `api/`, `schemas/`, `services/`, `repositories/`, and tests.
-- `docs/` project docs (`quick-map.md`, `runbook.md`, architecture/auth notes).
+- `openspec/` SDD specs and change proposals.
+- `docs/` project docs (`quick-map.md`, `runbook.md`, `vps-deploy.md`, architecture/auth notes).

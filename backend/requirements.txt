@@ -13,3 +13,4 @@ openpyxl==3.1.5
 pytest==8.3.4
 httpx==0.28.1
 bcrypt==3.2.0
+cryptography==44.0.0

@@ -25,6 +25,18 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 10 * 1024 * 1024
     timezone_local: str = "America/Argentina/Buenos_Aires"
 
+    mp_client_id: str = Field(default="", validation_alias="MP_CLIENT_ID")
+    mp_client_secret: str = Field(default="", validation_alias="MP_CLIENT_SECRET")
+    mp_redirect_uri: str = Field(default="", validation_alias="MP_REDIRECT_URI")
+    mp_token_encryption_key: str = Field(default="", validation_alias="MP_TOKEN_ENCRYPTION_KEY")
+    mp_api_base_url: str = Field(default="https://api.mercadopago.com", validation_alias="MP_API_BASE_URL")
+    mp_auth_base_url: str = Field(default="https://auth.mercadopago.com", validation_alias="MP_AUTH_BASE_URL")
+    mp_api_timeout_seconds: int = Field(default=20, validation_alias="MP_API_TIMEOUT_SECONDS")
+    mp_oauth_frontend_redirect: str = Field(
+        default="http://localhost:5173/conciliacion",
+        validation_alias="MP_OAUTH_FRONTEND_REDIRECT",
+    )
+
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() in {"prod", "production"}

@@ -1,0 +1,39 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Project: app-Almas (cierres mensuales SigueFit + gastos) — https://almas.lionapp.cloud
+  Stack: React 18 + TS + Vite 5 + Tailwind 3 | FastAPI + Pydantic v2 + SQLAlchemy 2 + Alembic | PostgreSQL 18 | JWT+bcrypt
+  Architecture: routers → services → repositories → models; frontend pages + apiFetch + Protected routes
+  Deploy: docker-compose.prod.yml (db, backend, frontend/Nginx); Traefik → frontend; GHCR images
+  Testing: pytest (backend); Alembic product head = 002
+  Style: modular domain layout; RFC 2119 in specs; Spanish product copy, English code identifiers
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes (DB, auth, deploy)
+    - Identify affected modules (backend routers/services + frontend pages)
+    - Call out data migration impact if schema changes
+  specs:
+    - Use Given/When/Then format for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Keep domains aligned with openspec/specs/*
+  design:
+    - Include sequence diagrams for complex flows (imports, finalize)
+    - Document architecture decisions with rationale
+  tasks:
+    - Group tasks by phase (infrastructure, backend, frontend, testing, deploy)
+    - Use hierarchical numbering (1.1, 1.2, etc.)
+    - Keep tasks small enough to complete in one session
+  apply:
+    - Follow existing code patterns and conventions (AGENTS.md)
+    - Load relevant coding skills for React/FastAPI stack
+    tdd: false
+    test_command: "cd backend && python -m pytest"
+  verify:
+    test_command: "cd backend && python -m pytest"
+    build_command: "cd frontend && npm run build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas (large removals)
+    - Ensure Alembic head stays coherent with openspec/specs/deployment

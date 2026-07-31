@@ -6,6 +6,7 @@ import LoginPage from "./pages/LoginPage";
 import ClosingsListPage from "./pages/ClosingsListPage";
 import ClosingDetailPage from "./pages/ClosingDetailPage";
 import TeachersPage from "./pages/TeachersPage";
+import ConciliacionPage from "./pages/ConciliacionPage";
 
 function Protected({ children }: { children: ReactNode }) {
   const { token, loading } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
         <Route index element={<ClosingsListPage />} />
         <Route path="closings/:id" element={<ClosingDetailPage />} />
         <Route path="teachers" element={<TeachersPage />} />
+        <Route path="conciliacion" element={<ConciliacionPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

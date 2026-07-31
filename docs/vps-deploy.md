@@ -16,7 +16,9 @@ Push a `main` (o `workflow_dispatch`) construye:
 - `ghcr.io/lelion13/app-almas-backend:<sha|main>`
 - `ghcr.io/lelion13/app-almas-frontend:<sha|main>`
 
-Preferí tag por SHA en `.env.prod` (evitar depender solo de `:main` a largo plazo).
+- Preferí tag por SHA en `.env.prod` (evitar depender solo de `:main` a largo plazo).
+- Postgres en compose: **`postgres:18-alpine`** (alineado a dumps hechos con PostgreSQL 18 local). Si el dump viene de otra major, igualá la imagen a esa versión.
+- Volumen PG 18+: montar en `/var/lib/postgresql` (no `/var/lib/postgresql/data`).
 
 ## 2. Archivos en el VPS
 
@@ -33,6 +35,7 @@ Ajustá en `.env.prod`:
 - `JWT_SECRET` (largo y aleatorio; **si restaurás dump, podés reusar el JWT local** para no invalidar sesiones, o rotarlo y pedir re-login)
 - `BACKEND_IMAGE` / `FRONTEND_IMAGE`
 - `TRAEFIK_CERT_RESOLVER` / `TRAEFIK_ENTRYPOINT` (igual que tus otras apps)
+- Conciliación MP (si habilitás OAuth): `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_REDIRECT_URI=https://almas.lionapp.cloud/api/v1/mp/oauth/callback`, `MP_OAUTH_FRONTEND_REDIRECT=https://almas.lionapp.cloud/conciliacion`, `MP_TOKEN_ENCRYPTION_KEY` (Fernet). Registrá la redirect URI en el panel de la app Mercado Pago. Si perdés la encryption key, hay que reconectar cuentas.
 
 ## 3. Migración de datos locales (obligatoria)
 

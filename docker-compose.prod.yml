@@ -6,14 +6,15 @@
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-almas}
       POSTGRES_USER: ${POSTGRES_USER:-almas}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
     volumes:
-      - almas_pgdata:/var/lib/postgresql/data
+      # Postgres 18+: el VOLUME oficial es /var/lib/postgresql (no .../data)
+      - almas_pgdata:/var/lib/postgresql
     expose:
       - "5432"
     healthcheck:
@@ -37,6 +38,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env.prod}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://almas.lionapp.cloud}
       SKIP_DB_MIGRATE: ${SKIP_DB_MIGRATE:-0}
+      MP_CLIENT_ID: ${MP_CLIENT_ID:-}
+      MP_CLIENT_SECRET: ${MP_CLIENT_SECRET:-}
+      MP_REDIRECT_URI: ${MP_REDIRECT_URI:-https://almas.lionapp.cloud/api/v1/mp/oauth/callback}
+      MP_OAUTH_FRONTEND_REDIRECT: ${MP_OAUTH_FRONTEND_REDIRECT:-https://almas.lionapp.cloud/conciliacion}
+      MP_TOKEN_ENCRYPTION_KEY: ${MP_TOKEN_ENCRYPTION_KEY:-}
+      MP_API_BASE_URL: ${MP_API_BASE_URL:-https://api.mercadopago.com}
+      MP_AUTH_BASE_URL: ${MP_AUTH_BASE_URL:-https://auth.mercadopago.com}
+      MP_API_TIMEOUT_SECONDS: ${MP_API_TIMEOUT_SECONDS:-20}
     expose:
       - "8000"
     healthcheck:
@@ -67,8 +76,6 @@ services:
       - traefik.http.services.almas.loadbalancer.server.port=80
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-
+    # No cap_drop en Nginx oficial: con ALL suele salir con código 1 al bind/start.
 volumes:
   almas_pgdata:

@@ -13,10 +13,18 @@
 - Guía completa (deploy + migración de datos locales): `docs/vps-deploy.md`
 - Dump local: `.\scripts\export-local-db.ps1`
 - Compose: `docker-compose.prod.yml` + `.env.prod` (plantilla `.env.prod.example`)
+- Specs de producto (SDD): `openspec/specs/`
 
 ## Cierres mensuales (SigueFit)
 - API bajo `/api/v1`: cierres, import `.xlsx`, resúmenes por categoría/método, gastos manuales, profesoras (admin).
 - Detalle funcional en `docs/monthly-closings-spec.md`.
+
+## Conciliación Mercado Pago (V1)
+- Menú admin **Conciliación** (`/conciliacion`): pestañas Cuentas e Ingresos.
+- OAuth multi-cuenta; tokens cifrados en DB; ingresos on-demand (no se persisten; sin match a SigueFit).
+- Env: ver `backend/.env.example` / `.env.prod.example` (`MP_*`).
+- Redirect OAuth backend: `{origin}/api/v1/mp/oauth/callback` (debe coincidir con la app en MP).
+- Specs: `openspec/changes/mp-conciliation-v1/` (hasta archive).
 
 ## Auth Troubleshooting
 - `401 Unauthorized`: verify JWT secret, token expiry, and auth header format.

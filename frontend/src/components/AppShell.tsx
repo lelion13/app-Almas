@@ -36,6 +36,11 @@ export default function AppShell() {
                 Profesoras
               </NavLink>
             )}
+            {isAdmin && (
+              <NavLink to="/conciliacion" className={linkCls} onClick={() => setOpen(false)}>
+                Conciliación
+              </NavLink>
+            )}
             <button
               type="button"
               className="text-left rounded-lg px-3 py-2 text-sm text-red-700 hover:bg-red-50"
@@ -59,6 +64,7 @@ export default function AppShell() {
             Cierres
           </NavLink>
           {isAdmin && <NavLink to="/teachers" className={linkCls}>Profesoras</NavLink>}
+          {isAdmin && <NavLink to="/conciliacion" className={linkCls}>Conciliación</NavLink>}
         </nav>
         <div className="mt-auto pt-6 text-xs text-slate-500 truncate">{me?.email}</div>
         <button

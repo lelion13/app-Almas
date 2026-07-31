@@ -108,6 +108,7 @@ npm run preview
 - Dominio: `https://almas.lionapp.cloud`
 - Ver `docs/vps-deploy.md` (compose, Traefik, GHCR y **migración de la DB local**).
 - Plantilla de secretos: `.env.prod.example`
+- **Specs SDD (funcionalidad + stack):** `openspec/specs/` — empezar por `platform` y `deployment`.
 
 ## Notas de seguridad
 
