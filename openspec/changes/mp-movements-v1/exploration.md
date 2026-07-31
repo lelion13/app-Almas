@@ -93,11 +93,10 @@ Default product shape for this change:
 3. **Async UX:** Blocking wait on Consultar — modern loading state (spinner + legend e.g. “Generando reporte en Mercado Pago…”) until rows are ready or timeout/error. No background job / navigate-away-and-refresh flow in this change.
 4. **Persistence:** Display-only — MUST NOT persist report files or movement rows in the DB (same as V1 payments).
 
-## Proposed scope snapshot (for proposal)
-- Admin Conciliación → tabs **Cuentas** | **Movimientos**
-- Fetch via Account Money Report (async generate → poll → parse CSV → return DTOs)
-- Client filters: bucket + type + text/currency as useful
-- Out of scope: SigueFit match, webhooks, staff access, persistence, Releases-only path
+## Proposed scope snapshot (updated)
+- Primary fetch: **Payments search** (fast). Account Money CSV removed from Consultar (too slow for UI).
+- Filters Todos | Ingresos | Egresos map cobros vs devoluciones/contracargos.
+- Bank withdrawals NOT in fast path (documented tradeoff).
 
 ## Ready for Proposal
 **Yes** — discovery locked; proceed to `proposal.md` when user confirms.

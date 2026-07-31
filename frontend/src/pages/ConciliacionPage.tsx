@@ -223,8 +223,8 @@ export default function ConciliacionPage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Conciliación</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Conectá cuentas de Mercado Pago y consultá movimientos del dinero en cuenta (ingresos y egresos,
-          sin guardar ni vincular a cierres).
+          Conectá cuentas de Mercado Pago y consultá cobros y devoluciones (rápido, sin guardar ni vincular a
+          cierres). Los retiros a banco no entran en esta consulta.
         </p>
       </div>
 
@@ -318,10 +318,9 @@ export default function ConciliacionPage() {
                 aria-hidden
               />
               <div className="text-center px-4">
-                <p className="text-sm font-medium text-slate-900">Consultando movimientos en Mercado Pago…</p>
+                <p className="text-sm font-medium text-slate-900">Consultando movimientos…</p>
                 <p className="mt-1 text-xs text-slate-500 max-w-sm">
-                  Pedimos varios reportes en paralelo. Suele demorar menos de un minuto; en meses con mucho
-                  movimiento puede llegar a ~1–2 min.
+                  Buscando cobros y devoluciones en Mercado Pago.
                 </p>
               </div>
             </div>

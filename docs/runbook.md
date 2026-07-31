@@ -20,12 +20,11 @@
 - Detalle funcional en `docs/monthly-closings-spec.md`.
 
 ## Conciliación Mercado Pago
-- Menú admin **Conciliación** (`/conciliacion`): pestañas Cuentas y **Movimientos**.
-- Movimientos usan el **Account Money Report** de MP (ingresos + egresos: cobros, retiros, devoluciones, etc.).
-- Consulta on-demand con espera (spinner); no se persisten filas; sin match a SigueFit.
-- Env: `MP_*` + `MP_REPORT_POLL_INTERVAL_SECONDS` / `MP_REPORT_POLL_TIMEOUT_SECONDS`.
-- Specs: `openspec/specs/mercado-pago/spec.md` · change activo: `openspec/changes/mp-movements-v1/`
-- Lecciones: `docs/mp-conciliation-lessons.md`
+- Menú admin **Conciliación** (`/conciliacion`): Cuentas y **Movimientos**.
+- Consulta rápida vía **Payments search** (cobros + devoluciones/contracargos). Sin reporte CSV Account Money (era demasiado lento).
+- Retiros a banco: **fuera** de esta consulta (ver `docs/mp-conciliation-lessons.md`).
+- Sin persistir filas; sin match a SigueFit.
+- Specs/change: `openspec/specs/mercado-pago/spec.md`, `openspec/changes/mp-movements-v1/`
 
 ## Auth Troubleshooting
 - `401 Unauthorized`: verify JWT secret, token expiry, and auth header format.

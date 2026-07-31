@@ -10,9 +10,8 @@ from app.services.mp_account_money_service import (
     MAX_RANGE_DAYS,
     _validate_range,
     bucket_for_type,
-    iter_range_chunks,
     label_for_type,
-    parse_settlement_csv,
+    map_payment_to_movement,
 )
 
 
@@ -42,70 +41,45 @@ def test_range_allows_60_days() -> None:
 
 def test_bucket_and_labels() -> None:
     assert bucket_for_type("SETTLEMENT") == "ingreso"
-    assert bucket_for_type("WITHDRAWAL") == "egreso"
-    assert bucket_for_type("PAYOUT") == "egreso"
     assert bucket_for_type("REFUND") == "egreso"
-    assert bucket_for_type("DISPUTE") == "otro"
+    assert bucket_for_type("CHARGEBACK") == "egreso"
     assert label_for_type("SETTLEMENT") == "Cobro"
-    assert label_for_type("WITHDRAWAL") == "Retiro bancario"
+    assert label_for_type("REFUND") == "Devolución"
 
 
-def test_parse_settlement_csv_semicolon() -> None:
-    csv_text = (
-        "SOURCE_ID;TRANSACTION_TYPE;TRANSACTION_DATE;TRANSACTION_AMOUNT;"
-        "TRANSACTION_CURRENCY;SETTLEMENT_NET_AMOUNT;EXTERNAL_REFERENCE;DESCRIPTION;FEE_AMOUNT\n"
-        "123;SETTLEMENT;2026-01-02T10:00:00Z;1000;ARS;950;ref1;Cuota;50\n"
-        "456;WITHDRAWAL;2026-01-03T12:00:00Z;500;ARS;500;;Retiro;0\n"
+def test_map_payment_approved_and_refunded() -> None:
+    cobro = map_payment_to_movement(
+        {
+            "id": 123,
+            "date_created": "2026-01-01T10:00:00.000-03:00",
+            "date_approved": "2026-01-02T11:00:00.000-03:00",
+            "transaction_amount": 1500.5,
+            "currency_id": "ARS",
+            "status": "approved",
+            "description": "Cuota",
+            "external_reference": "SF-1",
+            "fee_details": [{"amount": 50}],
+        }
     )
-    items = parse_settlement_csv(csv_text)
-    assert len(items) == 2
-    assert items[0].source_id == "123"
-    assert items[0].bucket == "ingreso"
-    assert items[0].amount == Decimal("950")
-    assert items[0].transaction_type_label == "Cobro"
-    assert items[0].external_reference == "ref1"
-    assert items[1].bucket == "egreso"
-    assert items[1].transaction_type_label == "Retiro bancario"
+    assert cobro.source_id == "123"
+    assert cobro.bucket == "ingreso"
+    assert cobro.transaction_type == "SETTLEMENT"
+    assert cobro.amount == Decimal("1500.5")
+    assert cobro.fee_amount == Decimal("50")
+    assert cobro.external_reference == "SF-1"
+    assert cobro.transaction_date is not None
+    assert cobro.transaction_date.day == 2
 
-
-def test_iter_range_chunks_splits_month() -> None:
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    end = datetime(2026, 1, 31, tzinfo=timezone.utc)
-    chunks = list(iter_range_chunks(start, end, chunk_days=7))
-    assert len(chunks) == 5
-    assert chunks[0][0] == start
-    assert chunks[-1][1] == end
-    for i in range(len(chunks) - 1):
-        assert chunks[i][1] == chunks[i + 1][0]
-
-
-def test_wait_for_many_completes_when_all_ready(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import mp_account_money_service as svc
-
-    jobs = [
-        {"report_id": 1, "file_name": None},
-        {"report_id": 2, "file_name": None},
-    ]
-    lists = [
-        [{"id": 1, "status": "pending"}, {"id": 2, "status": "pending"}],
-        [
-            {"id": 1, "status": "processed", "file_name": "a.csv"},
-            {"id": 2, "status": "processed", "file_name": "b.csv"},
-        ],
-    ]
-    calls = {"n": 0}
-
-    class FakeClient:
-        pass
-
-    def fake_list(_client, _token):
-        i = min(calls["n"], len(lists) - 1)
-        calls["n"] += 1
-        return lists[i]
-
-    monkeypatch.setattr(svc, "_list_reports", fake_list)
-    monkeypatch.setattr(svc.settings, "mp_report_poll_interval_seconds", 0.01)
-    monkeypatch.setattr(svc.settings, "mp_report_poll_timeout_seconds", 5.0)
-    svc.wait_for_many_report_files(FakeClient(), "tok", jobs=jobs)
-    assert jobs[0]["file_name"] == "a.csv"
-    assert jobs[1]["file_name"] == "b.csv"
+    devol = map_payment_to_movement(
+        {
+            "id": 456,
+            "date_created": "2026-01-03T10:00:00.000-03:00",
+            "transaction_amount": 200,
+            "currency_id": "ARS",
+            "status": "refunded",
+            "description": "Dev",
+        }
+    )
+    assert devol.bucket == "egreso"
+    assert devol.transaction_type == "REFUND"
+    assert devol.transaction_type_label == "Devolución"
