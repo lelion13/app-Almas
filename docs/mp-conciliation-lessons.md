@@ -66,10 +66,10 @@ Env extra: `MP_REPORT_POLL_INTERVAL_SECONDS` (default 2), `MP_REPORT_POLL_TIMEOU
 - Limpiar tablas MP viejas y stamp a revisión conocida.
 
 ### 7. Reportes Account Money
-- Generación **async**: rangos largos se parten en tramos (`MP_REPORT_CHUNK_DAYS`, default **5**) para evitar timeout.
-- Un mes ≈ varios reportes secuenciales; puede demorar varios minutos (Nginx/Traefik timeout ~600s).
-- Cuentas de prueba MP pueden devolver reportes vacíos.
-- CSV puede usar `;` o `,`.
+- MP no tiene listado JSON en tiempo real: genera CSV async.
+- Pedimos **varios tramos en paralelo** (arrancar todos → esperar juntos → descargar), no uno tras otro.
+- Tramo default: `MP_REPORT_CHUNK_DAYS=7`. Un mes ≈ tiempo de 1 reporte lento, no la suma.
+- Si falla permisos: reconectar OAuth. CSV `;` o `,`.
 
 ## Checklist ops OAuth + Movimientos (prod)
 

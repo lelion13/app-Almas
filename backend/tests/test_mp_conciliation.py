@@ -71,10 +71,41 @@ def test_parse_settlement_csv_semicolon() -> None:
 def test_iter_range_chunks_splits_month() -> None:
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
     end = datetime(2026, 1, 31, tzinfo=timezone.utc)
-    chunks = list(iter_range_chunks(start, end, chunk_days=5))
-    assert len(chunks) == 6
+    chunks = list(iter_range_chunks(start, end, chunk_days=7))
+    assert len(chunks) == 5
     assert chunks[0][0] == start
     assert chunks[-1][1] == end
-    # contiguous
     for i in range(len(chunks) - 1):
         assert chunks[i][1] == chunks[i + 1][0]
+
+
+def test_wait_for_many_completes_when_all_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import mp_account_money_service as svc
+
+    jobs = [
+        {"report_id": 1, "file_name": None},
+        {"report_id": 2, "file_name": None},
+    ]
+    lists = [
+        [{"id": 1, "status": "pending"}, {"id": 2, "status": "pending"}],
+        [
+            {"id": 1, "status": "processed", "file_name": "a.csv"},
+            {"id": 2, "status": "processed", "file_name": "b.csv"},
+        ],
+    ]
+    calls = {"n": 0}
+
+    class FakeClient:
+        pass
+
+    def fake_list(_client, _token):
+        i = min(calls["n"], len(lists) - 1)
+        calls["n"] += 1
+        return lists[i]
+
+    monkeypatch.setattr(svc, "_list_reports", fake_list)
+    monkeypatch.setattr(svc.settings, "mp_report_poll_interval_seconds", 0.01)
+    monkeypatch.setattr(svc.settings, "mp_report_poll_timeout_seconds", 5.0)
+    svc.wait_for_many_report_files(FakeClient(), "tok", jobs=jobs)
+    assert jobs[0]["file_name"] == "a.csv"
+    assert jobs[1]["file_name"] == "b.csv"

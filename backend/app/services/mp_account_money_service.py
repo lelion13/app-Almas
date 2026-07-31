@@ -228,80 +228,34 @@ def ensure_report_config(client: httpx.Client, token: str) -> None:
         raise _mp_error("No se pudo crear la configuración del reporte de dinero.")
 
 
-def _find_report(entries: list[dict], *, report_id: Any, begin: str, end: str) -> dict | None:
+def _find_report_by_id(entries: list[dict], report_id: Any) -> dict | None:
+    if report_id is None:
+        return None
     for e in entries:
         if not isinstance(e, dict):
             continue
-        if report_id is not None and e.get("id") == report_id:
+        if e.get("id") == report_id or e.get("report_id") == report_id:
             return e
-        if report_id is not None and e.get("report_id") == report_id:
-            return e
-    # Fallback: match date range + newest
-    matches = [
-        e
-        for e in entries
-        if isinstance(e, dict) and str(e.get("begin_date", "")).startswith(begin[:10])
-    ]
-    if matches:
-        return matches[0]
-    _ = end
     return None
 
 
-def wait_for_report_file(
-    client: httpx.Client,
-    token: str,
-    *,
-    report_id: Any,
-    begin: str,
-    end: str,
-) -> str:
+def _list_reports(client: httpx.Client, token: str) -> list[dict]:
     base = settings.mp_api_base_url.rstrip("/")
-    deadline = time.monotonic() + float(settings.mp_report_poll_timeout_seconds)
-    interval = max(0.5, float(settings.mp_report_poll_interval_seconds))
-    last_status = None
-    while time.monotonic() < deadline:
-        resp = client.get(f"{base}/v1/account/settlement_report/list", headers=_auth_headers(token))
-        if resp.status_code == 401:
-            raise _mp_error("Token de Mercado Pago inválido al listar reportes.")
-        if resp.status_code >= 400:
-            logger.warning("MP settlement_report list status=%s", resp.status_code)
-            raise _mp_error("Error al listar reportes de Mercado Pago.")
-        payload = resp.json()
-        entries = payload if isinstance(payload, list) else (payload.get("results") or [])
-        found = _find_report(entries, report_id=report_id, begin=begin, end=end)
-        if found:
-            last_status = found.get("status")
-            file_name = found.get("file_name")
-            if last_status in {"processed", "available", "ready"} and file_name:
-                return str(file_name)
-            if last_status in {"failed", "error", "cancelled"}:
-                raise _mp_error("Mercado Pago falló al generar el reporte de movimientos.")
-        time.sleep(interval)
-    raise HTTPException(
-        status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-        detail=f"Timeout esperando el reporte de Mercado Pago (último estado: {last_status or 'desconocido'}).",
-    )
-
-
-def download_report_csv(client: httpx.Client, token: str, file_name: str) -> str:
-    base = settings.mp_api_base_url.rstrip("/")
-    # file_name may contain characters; path-join carefully
-    url = f"{base}/v1/account/settlement_report/{file_name}"
-    resp = client.get(url, headers={"Authorization": f"Bearer {token}", "Accept": "*/*"})
+    resp = client.get(f"{base}/v1/account/settlement_report/list", headers=_auth_headers(token))
+    if resp.status_code == 401:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de Mercado Pago inválido al listar reportes.",
+        )
     if resp.status_code >= 400:
-        logger.warning("MP settlement_report download status=%s", resp.status_code)
-        raise _mp_error("No se pudo descargar el reporte de movimientos.")
-    return resp.text
+        logger.warning("MP settlement_report list status=%s", resp.status_code)
+        raise _mp_error("Error al listar reportes de Mercado Pago.")
+    payload = resp.json()
+    entries = payload if isinstance(payload, list) else (payload.get("results") or [])
+    return [e for e in entries if isinstance(e, dict)]
 
 
-def _fetch_one_chunk(
-    client: httpx.Client,
-    token: str,
-    *,
-    begin: str,
-    end: str,
-) -> list[MovementDto]:
+def _create_report(client: httpx.Client, token: str, *, begin: str, end: str) -> dict[str, Any]:
     base = settings.mp_api_base_url.rstrip("/")
     gen = client.post(
         f"{base}/v1/account/settlement_report",
@@ -319,16 +273,63 @@ def _fetch_one_chunk(
             "Mercado Pago rechazó la generación del reporte. "
             "Verificá permisos de la cuenta o reconectá OAuth."
         )
-    created = gen.json() if gen.content else {}
-    report_id = created.get("id") or created.get("report_id")
-    if created.get("file_name") and created.get("status") in {"processed", "available", "ready"}:
-        file_name = str(created["file_name"])
-    else:
-        file_name = wait_for_report_file(
-            client, token, report_id=report_id, begin=begin, end=end
+    return gen.json() if gen.content else {}
+
+
+def wait_for_many_report_files(
+    client: httpx.Client,
+    token: str,
+    *,
+    jobs: list[dict[str, Any]],
+) -> None:
+    """Poll until every job has file_name. Mutates jobs in place (sets file_name)."""
+    pending = [j for j in jobs if not j.get("file_name")]
+    if not pending:
+        return
+
+    deadline = time.monotonic() + float(settings.mp_report_poll_timeout_seconds)
+    interval = max(0.5, float(settings.mp_report_poll_interval_seconds))
+    last_statuses: dict[Any, str | None] = {j.get("report_id"): None for j in pending}
+
+    while pending and time.monotonic() < deadline:
+        entries = _list_reports(client, token)
+        still: list[dict[str, Any]] = []
+        for job in pending:
+            found = _find_report_by_id(entries, job.get("report_id"))
+            if not found:
+                still.append(job)
+                continue
+            st = found.get("status")
+            last_statuses[job.get("report_id")] = str(st) if st is not None else None
+            file_name = found.get("file_name")
+            if st in {"processed", "available", "ready"} and file_name:
+                job["file_name"] = str(file_name)
+                continue
+            if st in {"failed", "error", "cancelled"}:
+                raise _mp_error("Mercado Pago falló al generar el reporte de movimientos.")
+            still.append(job)
+        pending = still
+        if pending:
+            time.sleep(interval)
+
+    if pending:
+        detail_bits = ", ".join(
+            f"{rid}:{last_statuses.get(rid) or 'desconocido'}" for rid in (j.get("report_id") for j in pending)
         )
-    csv_text = download_report_csv(client, token, file_name)
-    return parse_settlement_csv(csv_text)
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"Timeout esperando reportes de Mercado Pago ({detail_bits}).",
+        )
+
+
+def download_report_csv(client: httpx.Client, token: str, file_name: str) -> str:
+    base = settings.mp_api_base_url.rstrip("/")
+    url = f"{base}/v1/account/settlement_report/{file_name}"
+    resp = client.get(url, headers={"Authorization": f"Bearer {token}", "Accept": "*/*"})
+    if resp.status_code >= 400:
+        logger.warning("MP settlement_report download status=%s", resp.status_code)
+        raise _mp_error("No se pudo descargar el reporte de movimientos.")
+    return resp.text
 
 
 def search_movements(
@@ -348,36 +349,66 @@ def search_movements(
     token = mp_oauth_service.ensure_access_token(db, account)
     chunk_days = max(1, int(settings.mp_report_chunk_days))
     chunks = list(iter_range_chunks(from_datetime, to_datetime, chunk_days=chunk_days))
-    # Wall-clock budget: per-chunk poll timeout * chunks (+ buffer for downloads/config)
-    wall = float(settings.mp_report_poll_timeout_seconds) * max(1, len(chunks)) + 60.0
+    # Parallel pipeline: wall ≈ one slow report, not sum of chunks
+    wall = float(settings.mp_report_poll_timeout_seconds) + 90.0
     timeout = httpx.Timeout(max(120.0, float(settings.mp_api_timeout_seconds), wall))
-
-    items: list[MovementDto] = []
-    seen: set[tuple] = set()
 
     with httpx.Client(timeout=timeout) as client:
         ensure_report_config(client, token)
-        for idx, (chunk_from, chunk_to) in enumerate(chunks, start=1):
-            begin = _as_utc_iso(chunk_from)
-            end = _as_utc_iso(chunk_to)
-            logger.info(
-                "MP movements chunk %s/%s account=%s begin=%s end=%s",
-                idx,
-                len(chunks),
-                account_id,
-                begin,
-                end,
-            )
-            try:
-                chunk_items = _fetch_one_chunk(client, token, begin=begin, end=end)
-            except HTTPException as exc:
-                if exc.status_code == status.HTTP_401_UNAUTHORIZED:
-                    token = mp_oauth_service.ensure_access_token(db, account)
-                    ensure_report_config(client, token)
-                    chunk_items = _fetch_one_chunk(client, token, begin=begin, end=end)
-                else:
-                    raise
-            for m in chunk_items:
+
+        def start_all(tok: str) -> list[dict[str, Any]]:
+            jobs: list[dict[str, Any]] = []
+            for idx, (chunk_from, chunk_to) in enumerate(chunks, start=1):
+                begin = _as_utc_iso(chunk_from)
+                end = _as_utc_iso(chunk_to)
+                logger.info(
+                    "MP movements start chunk %s/%s account=%s begin=%s end=%s",
+                    idx,
+                    len(chunks),
+                    account_id,
+                    begin,
+                    end,
+                )
+                created = _create_report(client, tok, begin=begin, end=end)
+                report_id = created.get("id") or created.get("report_id")
+                file_name = None
+                if created.get("file_name") and created.get("status") in {"processed", "available", "ready"}:
+                    file_name = str(created["file_name"])
+                jobs.append(
+                    {
+                        "report_id": report_id,
+                        "begin": begin,
+                        "end": end,
+                        "file_name": file_name,
+                    }
+                )
+            return jobs
+
+        try:
+            jobs = start_all(token)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_401_UNAUTHORIZED:
+                raise
+            token = mp_oauth_service.ensure_access_token(db, account)
+            ensure_report_config(client, token)
+            jobs = start_all(token)
+
+        try:
+            wait_for_many_report_files(client, token, jobs=jobs)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_401_UNAUTHORIZED:
+                raise
+            token = mp_oauth_service.ensure_access_token(db, account)
+            wait_for_many_report_files(client, token, jobs=jobs)
+
+        items: list[MovementDto] = []
+        seen: set[tuple] = set()
+        for job in jobs:
+            file_name = job.get("file_name")
+            if not file_name:
+                raise _mp_error("Reporte de Mercado Pago sin archivo para descargar.")
+            csv_text = download_report_csv(client, token, str(file_name))
+            for m in parse_settlement_csv(csv_text):
                 key = _movement_dedupe_key(m)
                 if key in seen:
                     continue

@@ -318,10 +318,10 @@ export default function ConciliacionPage() {
                 aria-hidden
               />
               <div className="text-center px-4">
-                <p className="text-sm font-medium text-slate-900">Generando reporte en Mercado Pago…</p>
+                <p className="text-sm font-medium text-slate-900">Consultando movimientos en Mercado Pago…</p>
                 <p className="mt-1 text-xs text-slate-500 max-w-sm">
-                  Los rangos largos se consultan en tramos de pocos días. Un mes puede demorar varios
-                  minutos; no cierres esta pantalla.
+                  Pedimos varios reportes en paralelo. Suele demorar menos de un minuto; en meses con mucho
+                  movimiento puede llegar a ~1–2 min.
                 </p>
               </div>
             </div>
