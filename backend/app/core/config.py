@@ -36,7 +36,10 @@ class Settings(BaseSettings):
         default=2.0, validation_alias="MP_REPORT_POLL_INTERVAL_SECONDS"
     )
     mp_report_poll_timeout_seconds: float = Field(
-        default=120.0, validation_alias="MP_REPORT_POLL_TIMEOUT_SECONDS"
+        default=180.0, validation_alias="MP_REPORT_POLL_TIMEOUT_SECONDS"
+    )
+    mp_report_chunk_days: int = Field(
+        default=5, validation_alias="MP_REPORT_CHUNK_DAYS"
     )
     mp_oauth_frontend_redirect: str = Field(
         default="http://localhost:5173/conciliacion",

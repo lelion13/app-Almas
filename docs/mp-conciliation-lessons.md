@@ -65,10 +65,11 @@ Env extra: `MP_REPORT_POLL_INTERVAL_SECONDS` (default 2), `MP_REPORT_POLL_TIMEOU
 ### 6. Dump local con Alembic huérfano `003` (reconcilación vieja)
 - Limpiar tablas MP viejas y stamp a revisión conocida.
 
-### 7. Reportes Account Money (nuevo)
-- Generación **async**: timeout configurable; si falla permisos, reconectar OAuth.
-- Cuentas de prueba MP pueden devolver reportes vacíos (limitación documentada por MP).
-- CSV puede usar `;` o `,` — el parser detecta ambos.
+### 7. Reportes Account Money
+- Generación **async**: rangos largos se parten en tramos (`MP_REPORT_CHUNK_DAYS`, default **5**) para evitar timeout.
+- Un mes ≈ varios reportes secuenciales; puede demorar varios minutos (Nginx/Traefik timeout ~600s).
+- Cuentas de prueba MP pueden devolver reportes vacíos.
+- CSV puede usar `;` o `,`.
 
 ## Checklist ops OAuth + Movimientos (prod)
 

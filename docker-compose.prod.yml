@@ -47,7 +47,8 @@ services:
       MP_AUTH_BASE_URL: ${MP_AUTH_BASE_URL:-https://auth.mercadopago.com}
       MP_API_TIMEOUT_SECONDS: ${MP_API_TIMEOUT_SECONDS:-20}
       MP_REPORT_POLL_INTERVAL_SECONDS: ${MP_REPORT_POLL_INTERVAL_SECONDS:-2}
-      MP_REPORT_POLL_TIMEOUT_SECONDS: ${MP_REPORT_POLL_TIMEOUT_SECONDS:-120}
+      MP_REPORT_POLL_TIMEOUT_SECONDS: ${MP_REPORT_POLL_TIMEOUT_SECONDS:-180}
+      MP_REPORT_CHUNK_DAYS: ${MP_REPORT_CHUNK_DAYS:-5}
     expose:
       - "8000"
     healthcheck:
@@ -76,6 +77,9 @@ services:
       - traefik.http.routers.almas.tls=true
       - traefik.http.routers.almas.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}
       - traefik.http.services.almas.loadbalancer.server.port=80
+      # Movimientos MP puede demorar varios minutos (reportes por tramos)
+      - traefik.http.serversTransports.almas.forwardingTimeouts.responseHeaderTimeout=600s
+      - traefik.http.services.almas.loadbalancer.serverstransport=almas@docker
     security_opt:
       - no-new-privileges:true
     # No cap_drop en Nginx oficial: con ALL suele salir con código 1 al bind/start.

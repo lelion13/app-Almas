@@ -10,6 +10,7 @@ from app.services.mp_account_money_service import (
     MAX_RANGE_DAYS,
     _validate_range,
     bucket_for_type,
+    iter_range_chunks,
     label_for_type,
     parse_settlement_csv,
 )
@@ -65,3 +66,15 @@ def test_parse_settlement_csv_semicolon() -> None:
     assert items[0].external_reference == "ref1"
     assert items[1].bucket == "egreso"
     assert items[1].transaction_type_label == "Retiro bancario"
+
+
+def test_iter_range_chunks_splits_month() -> None:
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 31, tzinfo=timezone.utc)
+    chunks = list(iter_range_chunks(start, end, chunk_days=5))
+    assert len(chunks) == 6
+    assert chunks[0][0] == start
+    assert chunks[-1][1] == end
+    # contiguous
+    for i in range(len(chunks) - 1):
+        assert chunks[i][1] == chunks[i + 1][0]

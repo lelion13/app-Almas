@@ -4,9 +4,9 @@ import csv
 import io
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Iterator
 from uuid import UUID
 
 import httpx
@@ -64,6 +64,32 @@ def _as_utc_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def iter_range_chunks(
+    from_dt: datetime,
+    to_dt: datetime,
+    *,
+    chunk_days: int,
+) -> Iterator[tuple[datetime, datetime]]:
+    """Split [from, to] into contiguous windows of at most chunk_days (keeps MP reports small)."""
+    days = max(1, int(chunk_days))
+    cursor = from_dt
+    while cursor < to_dt:
+        nxt = min(cursor + timedelta(days=days), to_dt)
+        yield cursor, nxt
+        cursor = nxt
+
+
+def _movement_dedupe_key(m: MovementDto) -> tuple:
+    return (
+        m.source_id,
+        m.transaction_type,
+        m.transaction_date.isoformat() if m.transaction_date else "",
+        str(m.amount),
+        m.currency,
+        m.external_reference or "",
+    )
 
 
 def bucket_for_type(transaction_type: str) -> MovementBucket:
@@ -269,6 +295,42 @@ def download_report_csv(client: httpx.Client, token: str, file_name: str) -> str
     return resp.text
 
 
+def _fetch_one_chunk(
+    client: httpx.Client,
+    token: str,
+    *,
+    begin: str,
+    end: str,
+) -> list[MovementDto]:
+    base = settings.mp_api_base_url.rstrip("/")
+    gen = client.post(
+        f"{base}/v1/account/settlement_report",
+        headers=_auth_headers(token),
+        json={"begin_date": begin, "end_date": end},
+    )
+    if gen.status_code == 401:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de Mercado Pago inválido al generar reporte.",
+        )
+    if gen.status_code >= 400:
+        logger.warning("MP settlement_report create status=%s begin=%s end=%s", gen.status_code, begin, end)
+        raise _mp_error(
+            "Mercado Pago rechazó la generación del reporte. "
+            "Verificá permisos de la cuenta o reconectá OAuth."
+        )
+    created = gen.json() if gen.content else {}
+    report_id = created.get("id") or created.get("report_id")
+    if created.get("file_name") and created.get("status") in {"processed", "available", "ready"}:
+        file_name = str(created["file_name"])
+    else:
+        file_name = wait_for_report_file(
+            client, token, report_id=report_id, begin=begin, end=end
+        )
+    csv_text = download_report_csv(client, token, file_name)
+    return parse_settlement_csv(csv_text)
+
+
 def search_movements(
     db: Session,
     *,
@@ -284,44 +346,46 @@ def search_movements(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La cuenta está desactivada.")
 
     token = mp_oauth_service.ensure_access_token(db, account)
-    begin = _as_utc_iso(from_datetime)
-    end = _as_utc_iso(to_datetime)
-    base = settings.mp_api_base_url.rstrip("/")
-    # Long-lived client: poll + download
-    timeout = httpx.Timeout(
-        max(60.0, float(settings.mp_api_timeout_seconds), float(settings.mp_report_poll_timeout_seconds) + 30)
-    )
+    chunk_days = max(1, int(settings.mp_report_chunk_days))
+    chunks = list(iter_range_chunks(from_datetime, to_datetime, chunk_days=chunk_days))
+    # Wall-clock budget: per-chunk poll timeout * chunks (+ buffer for downloads/config)
+    wall = float(settings.mp_report_poll_timeout_seconds) * max(1, len(chunks)) + 60.0
+    timeout = httpx.Timeout(max(120.0, float(settings.mp_api_timeout_seconds), wall))
+
+    items: list[MovementDto] = []
+    seen: set[tuple] = set()
 
     with httpx.Client(timeout=timeout) as client:
         ensure_report_config(client, token)
-        gen = client.post(
-            f"{base}/v1/account/settlement_report",
-            headers=_auth_headers(token),
-            json={"begin_date": begin, "end_date": end},
-        )
-        if gen.status_code == 401:
-            token = mp_oauth_service.ensure_access_token(db, account)
-            ensure_report_config(client, token)
-            gen = client.post(
-                f"{base}/v1/account/settlement_report",
-                headers=_auth_headers(token),
-                json={"begin_date": begin, "end_date": end},
+        for idx, (chunk_from, chunk_to) in enumerate(chunks, start=1):
+            begin = _as_utc_iso(chunk_from)
+            end = _as_utc_iso(chunk_to)
+            logger.info(
+                "MP movements chunk %s/%s account=%s begin=%s end=%s",
+                idx,
+                len(chunks),
+                account_id,
+                begin,
+                end,
             )
-        if gen.status_code >= 400:
-            logger.warning("MP settlement_report create status=%s", gen.status_code)
-            raise _mp_error(
-                "Mercado Pago rechazó la generación del reporte. "
-                "Verificá permisos de la cuenta o reconectá OAuth."
-            )
-        created = gen.json() if gen.content else {}
-        report_id = created.get("id") or created.get("report_id")
-        # Sometimes API returns processed immediately with file_name
-        if created.get("file_name") and created.get("status") in {"processed", "available", "ready"}:
-            file_name = str(created["file_name"])
-        else:
-            file_name = wait_for_report_file(
-                client, token, report_id=report_id, begin=begin, end=end
-            )
-        csv_text = download_report_csv(client, token, file_name)
+            try:
+                chunk_items = _fetch_one_chunk(client, token, begin=begin, end=end)
+            except HTTPException as exc:
+                if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+                    token = mp_oauth_service.ensure_access_token(db, account)
+                    ensure_report_config(client, token)
+                    chunk_items = _fetch_one_chunk(client, token, begin=begin, end=end)
+                else:
+                    raise
+            for m in chunk_items:
+                key = _movement_dedupe_key(m)
+                if key in seen:
+                    continue
+                seen.add(key)
+                items.append(m)
 
-    return parse_settlement_csv(csv_text)
+    items.sort(
+        key=lambda m: m.transaction_date or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    return items

@@ -319,8 +319,9 @@ export default function ConciliacionPage() {
               />
               <div className="text-center px-4">
                 <p className="text-sm font-medium text-slate-900">Generando reporte en Mercado Pago…</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Puede demorar unos segundos o minutos según el volumen del período.
+                <p className="mt-1 text-xs text-slate-500 max-w-sm">
+                  Los rangos largos se consultan en tramos de pocos días. Un mes puede demorar varios
+                  minutos; no cierres esta pantalla.
                 </p>
               </div>
             </div>
