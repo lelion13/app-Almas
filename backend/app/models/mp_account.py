@@ -18,7 +18,7 @@ class MpAccount(Base):
     refresh_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     token_last4: Mapped[str] = mapped_column(String(4), nullable=False, default="")
-    scopes: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

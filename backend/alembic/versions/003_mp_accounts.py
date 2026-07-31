@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("refresh_token_encrypted", sa.Text(), nullable=False),
         sa.Column("token_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("token_last4", sa.String(length=4), nullable=False, server_default=""),
-        sa.Column("scopes", sa.String(length=512), nullable=True),
+        sa.Column("scopes", sa.Text(), nullable=True),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
