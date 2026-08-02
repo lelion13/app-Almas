@@ -99,12 +99,19 @@ export default function StudioAdminPage() {
 
   if (me?.role !== "admin") return <Navigate to="/" replace />;
 
+  async function refreshRoomsCatalog() {
+    await load("roomsAll", "/api/v1/studio/rooms");
+    if (tab === "rooms") await loadTab("rooms");
+  }
+
   async function submit(path: string, body: unknown, success: string, reload = tab) {
     setBusy(true); setError(null); setNotice(null);
     try {
       await apiFetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       setNotice(success);
       await loadTab(reload);
+      if (path.includes("/studio/rooms")) await load("roomsAll", "/api/v1/studio/rooms");
+      if (path.includes("/studio/sites")) await load("sites", "/api/v1/studio/sites");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo guardar.");
     } finally { setBusy(false); }
@@ -117,14 +124,37 @@ export default function StudioAdminPage() {
     </form>
   );
 
+  const siteName = (siteId: unknown) => {
+    const site = list("sites").find((item) => item.id === siteId);
+    return site ? asText(site.name) : asText(siteId);
+  };
+  const roomsForSite = (siteId: string) =>
+    list("roomsAll").filter((room) => !siteId || String(room.site_id) === siteId);
   const selects = {
     site: list("sites"), room: list("roomsAll"), activity: list("activities"),
     instructor: list("instructors"), student: list("students"), product: list("products"), pack: list("packs"),
   };
-  const Select = ({ label, field, items, required = true }: { label: string; field: string; items: Item[]; required?: boolean }) => (
+  const Select = ({ label, field, items, required = true, onChangeExtra }: {
+    label: string; field: string; items: Item[]; required?: boolean;
+    onChangeExtra?: (next: string) => void;
+  }) => (
     <label className="space-y-1 text-sm text-slate-700"><span>{label}</span>
-      <select className={inputClass} value={value(field)} onChange={(e) => setValue(field, e.target.value)} required={required}>
-        <option value="">Seleccionar…</option>{items.map((item) => <option key={item.id} value={item.id}>{asText(item.name ?? item.full_name ?? item.id)}</option>)}
+      <select
+        className={inputClass}
+        value={value(field)}
+        onChange={(e) => {
+          setValue(field, e.target.value);
+          onChangeExtra?.(e.target.value);
+        }}
+        required={required}
+      >
+        <option value="">Seleccionar…</option>
+        {items.map((item) => (
+          <option key={item.id} value={item.id}>
+            {asText(item.name ?? item.full_name ?? item.id)}
+            {item.site_id ? ` · ${siteName(item.site_id)}` : ""}
+          </option>
+        ))}
       </select>
     </label>
   );
@@ -145,8 +175,36 @@ export default function StudioAdminPage() {
 
       {tab === "rooms" && <section className="space-y-4">
         {form((e) => { e.preventDefault(); void submit("/api/v1/studio/rooms", { site_id: id("newRoomSite"), name: value("roomName"), capacity: Number(value("roomCapacity")) }, "Salón creado."); }, <><Select label="Sede" field="newRoomSite" items={selects.site} /><Field label="Nombre" value={value("roomName")} onChange={(e) => setValue("roomName", e.target.value)} required /><Field label="Capacidad" type="number" min="1" value={value("roomCapacity")} onChange={(e) => setValue("roomCapacity", e.target.value)} required /></>)}
-        <div className="flex gap-2"><select className={inputClass} value={value("roomSite")} onChange={(e) => setValue("roomSite", e.target.value)}><option value="">Todas las sedes</option>{selects.site.map((site) => <option key={site.id} value={site.id}>{asText(site.name)}</option>)}</select><button type="button" className="rounded-lg border px-3 text-sm" onClick={() => void loadTab()}>Filtrar</button></div>
-        <List items={list("rooms")} fields={["name", "site_id", "capacity", "active"]} />
+        <div className="flex flex-wrap gap-2">
+          <select
+            className={inputClass}
+            value={value("roomSite")}
+            onChange={(e) => {
+              setValue("roomSite", e.target.value);
+              void load("rooms", query("/api/v1/studio/rooms", { site_id: e.target.value }));
+            }}
+          >
+            <option value="">Todas las sedes</option>
+            {selects.site.map((site) => <option key={site.id} value={site.id}>{asText(site.name)}</option>)}
+          </select>
+          <button type="button" className="rounded-lg border px-3 text-sm" onClick={() => void refreshRoomsCatalog()}>Actualizar</button>
+        </div>
+        {list("rooms").length === 0 ? (
+          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">No hay salones{(value("roomSite") ? " para esta sede" : "")}.</p>
+        ) : (
+          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+            {list("rooms").map((room) => (
+              <li key={room.id} className="px-4 py-3 text-sm">
+                <div className="font-medium text-slate-900">{asText(room.name)}</div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                  <span>sede: {siteName(room.site_id)}</span>
+                  <span>capacidad: {asText(room.capacity)}</span>
+                  <span>activo: {asText(room.active)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>}
 
       {tab === "activities" && <section className="space-y-4">
@@ -168,7 +226,35 @@ export default function StudioAdminPage() {
             duration_minutes: Number(value("seriesDuration")), capacity: Number(value("seriesCapacity")),
             level: value("seriesLevel") || "inicial",
           }, "Serie creada.");
-        }, <><Select label="Sede" field="seriesSite" items={selects.site} /><Select label="Salón" field="seriesRoom" items={selects.room} /><Select label="Actividad" field="seriesActivity" items={selects.activity} /><Select label="Instructor" field="seriesInstructor" items={selects.instructor} /><Field label="Día (0 domingo · 6 sábado)" type="number" min="0" max="6" value={value("seriesWeekday")} onChange={(e) => setValue("seriesWeekday", e.target.value)} required /><Field label="Hora" type="time" step="1" value={value("seriesTime")} onChange={(e) => setValue("seriesTime", e.target.value)} required /><Field label="Duración (minutos)" type="number" min="1" value={value("seriesDuration")} onChange={(e) => setValue("seriesDuration", e.target.value)} required /><Field label="Capacidad" type="number" min="1" value={value("seriesCapacity")} onChange={(e) => setValue("seriesCapacity", e.target.value)} required /><Field label="Nivel" value={value("seriesLevel")} onChange={(e) => setValue("seriesLevel", e.target.value)} placeholder="inicial" /></>)}
+        }, <>
+          <Select
+            label="Sede"
+            field="seriesSite"
+            items={selects.site}
+            onChangeExtra={(next) => {
+              const currentRoom = list("roomsAll").find((room) => room.id === value("seriesRoom"));
+              if (currentRoom && String(currentRoom.site_id) !== next) setValue("seriesRoom", "");
+            }}
+          />
+          <Select
+            label="Salón"
+            field="seriesRoom"
+            items={roomsForSite(value("seriesSite"))}
+            required={Boolean(value("seriesSite"))}
+          />
+          {value("seriesSite") && roomsForSite(value("seriesSite")).length === 0 && (
+            <p className="sm:col-span-2 text-sm text-amber-800">
+              No hay salones para esta sede. Creá uno en la pestaña <strong>Salones</strong> y volvé acá.
+            </p>
+          )}
+          <Select label="Actividad" field="seriesActivity" items={selects.activity} />
+          <Select label="Instructor" field="seriesInstructor" items={selects.instructor} />
+          <Field label="Día (0 domingo · 6 sábado)" type="number" min="0" max="6" value={value("seriesWeekday")} onChange={(e) => setValue("seriesWeekday", e.target.value)} required />
+          <Field label="Hora" type="time" step="1" value={value("seriesTime")} onChange={(e) => setValue("seriesTime", e.target.value)} required />
+          <Field label="Duración (minutos)" type="number" min="1" value={value("seriesDuration")} onChange={(e) => setValue("seriesDuration", e.target.value)} required />
+          <Field label="Capacidad" type="number" min="1" value={value("seriesCapacity")} onChange={(e) => setValue("seriesCapacity", e.target.value)} required />
+          <Field label="Nivel" value={value("seriesLevel")} onChange={(e) => setValue("seriesLevel", e.target.value)} placeholder="inicial" />
+        </>)}
         <List items={list("series")} fields={["weekday", "start_time", "duration_minutes", "capacity", "level", "active"]} />
         {form((e) => {
           e.preventDefault();
