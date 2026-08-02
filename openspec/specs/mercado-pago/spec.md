@@ -1,9 +1,10 @@
 # Mercado Pago Specification
 
 ## Purpose
-Admin-only Conciliación: connect multiple Mercado Pago seller accounts via OAuth and fetch payment incomes on demand for display (no payment row persistence; no matching to SigueFit).
+Admin-only Conciliación: connect multiple Mercado Pago seller accounts via OAuth and fetch **movements** on demand for display (no row persistence; no matching to SigueFit).
 
-Operational lessons (errors, out-of-scope, OAuth checklist): `docs/mp-conciliation-lessons.md`.
+Operational lessons: `docs/mp-conciliation-lessons.md`.  
+Archived change: `openspec/changes/archive/2026-07-31-mp-movements-v1/`.
 
 ## Requirements
 
@@ -25,12 +26,12 @@ The system MUST restrict all Mercado Pago Conciliación APIs and UI to users wit
 
 The system MUST expose a primary nav item **Conciliación** (admin only) leading to a single page with two tabs:
 1. **Cuentas Mercado Pago**
-2. **Ingresos**
+2. **Movimientos** (replaces former **Ingresos**)
 
 #### Scenario: Two tabs present
 - **GIVEN** an admin on Conciliación
 - **WHEN** the page renders
-- **THEN** both tabs Cuentas Mercado Pago and Ingresos MUST be available
+- **THEN** both tabs Cuentas Mercado Pago and Movimientos MUST be available
 
 ### Requirement: Persist connected MP accounts
 
@@ -75,57 +76,66 @@ Credentials MUST be the application **Client ID** and **Client Secret** (not Pub
 
 ### Requirement: Deactivate or disconnect accounts
 
-The admin MUST be able to deactivate or disconnect a connected account so it cannot be used for income fetches until reconnected. Soft-deactivation SHOULD be preferred; hard delete MAY be supported if it removes encrypted tokens.
+The admin MUST be able to deactivate or disconnect a connected account so it cannot be used for fetches until reconnected. Soft-deactivation SHOULD be preferred.
 
 #### Scenario: Deactivated account cannot fetch
 - **GIVEN** an account marked inactive/disconnected
-- **WHEN** admin requests incomes for that account
+- **WHEN** admin requests movements for that account
 - **THEN** the system MUST reject the request with a client error
 
-### Requirement: On-demand income fetch (no persistence)
+### Requirement: On-demand movements via Payments search (fast path)
 
-The system MUST allow admin to fetch payments for **one** active account and a from/to datetime range. The inclusive span MUST NOT exceed **60 days**. The system MUST return payment DTOs to the client and MUST NOT persist payment/income lines in the database in this version.
+The system MUST allow admin to fetch movements for **one** active connected account and a from/to datetime range of at most **60 days**, using Mercado Pago **Payments search** (`GET /v1/payments/search`) — synchronous JSON suitable for interactive UI.
 
-The fetch MUST call Mercado Pago **Payments** search (`/v1/payments/search`) across statuses (not server-filtered to approved-only). These rows are **seller payment/cobro** records; refunds/chargebacks appear as payment statuses, not as bank withdrawals. The UI MAY filter by status, currency, or text after the response arrives.
+The system MUST NOT use Account Money / settlement CSV report generation for the primary Consultar action (those reports take minutes and timed out for month-long ranges in production).
 
-Displayed fields MUST include at least: payment id, date (approval or creation as designed), amount, currency, status, description, payer reference.
+The system MUST return movement DTOs and MUST NOT persist payment/movement rows.
+
+Bucket mapping from payment `status`:
+- `ingreso`: `approved` → type `SETTLEMENT` / label Cobro
+- `egreso`: `refunded`, `charged_back` → Devolución / Contracargo
+- `otro`: pending, in_process, in_mediation, rejected, cancelled, unknown
+
+Bank withdrawals (`WITHDRAWAL` / `PAYOUT`) are **out of scope** for this primary fetch.
+
+Movement DTOs MUST include when available from MP: source id, date, type/label, bucket, amount, currency, description, external_reference, fee_amount, **payer_email**, **payer_id_type**, **payer_id_number**, **payment_method**, **payment_type**. Payer identification fields MAY be null (MP does not always send DNI/CUIT).
+
+UI MUST provide filters: Todos | Ingresos | Egresos, type, currency, free text (including documento/email). Table MUST show Documento, Email, and Medio columns (display "—" when absent).
 
 #### Scenario: Valid range fetch
 - **GIVEN** an active connected account and a from/to range of at most 60 days
-- **WHEN** admin requests incomes
-- **THEN** the system MUST call Mercado Pago with a valid access token (refreshing if needed) and return a list of payment DTOs
-- **AND** MUST NOT write those payments to durable storage
+- **WHEN** admin requests movements
+- **THEN** the system MUST call Payments search and return movement DTOs
+- **AND** MUST NOT write those rows to durable storage
+- **AND** MUST NOT wait on Account Money report generation
 
 #### Scenario: Range too long
 - **GIVEN** from/to spanning more than 60 days
-- **WHEN** incomes are requested
-- **THEN** the response MUST be `422` (or equivalent validation error)
+- **WHEN** movements are requested
+- **THEN** the response MUST be `422`
 
-#### Scenario: Token refresh
-- **GIVEN** an expired access token and a valid refresh token
-- **WHEN** incomes are requested
-- **THEN** the system MUST refresh tokens, re-encrypt and store the new pair, and complete the fetch
+#### Scenario: Payer document when present
+- **GIVEN** a payment whose `payer.identification` includes type and number
+- **WHEN** movements are returned
+- **THEN** the DTO MUST expose `payer_id_type` and `payer_id_number`
 
 ### Requirement: Token encryption and secrecy
 
-Access and refresh tokens MUST be encrypted at rest using a server-side Fernet key from the environment (`MP_TOKEN_ENCRYPTION_KEY`). Tokens MUST NEVER be logged. API responses to the browser MUST NEVER include plaintext tokens. Encryption key loss MUST be treated as requiring re-OAuth for affected accounts (documented in deploy notes).
+Access and refresh tokens MUST be encrypted at rest using a server-side Fernet key (`MP_TOKEN_ENCRYPTION_KEY`). Tokens MUST NEVER be logged. API list responses MUST NEVER include plaintext tokens.
 
-#### Scenario: Secrets not in list payload
-- **GIVEN** connected accounts with stored tokens
-- **WHEN** `GET` accounts is called
-- **THEN** no access_token or refresh_token plaintext fields MUST appear in the JSON body
-
-### Requirement: Explicit non-goals (V1)
+### Requirement: Explicit non-goals
 
 The system MUST NOT in this version:
-- link or reconcile MP payments with SigueFit lines or monthly closings
-- auto-match payments
+- link or reconcile MP movements with SigueFit lines or monthly closings (auto-match)
 - ingest MP webhooks for realtime sync
-- fetch or manage MP withdrawals/egresos (bank payouts)
+- use Account Money CSV as the primary Conciliación Consultar path
+- fetch bank withdrawals/payouts in the primary Consultar path
 - allow staff to manage Conciliación
 - paste manual Access Tokens instead of OAuth
+- persist movement rows or report files in the Almas database
 
 ## Related
 - Lessons: `docs/mp-conciliation-lessons.md`
 - Deploy: `docs/vps-deploy.md`, `docs/runbook.md`
-- Archived change: `openspec/changes/archive/2026-07-31-mp-conciliation-v1/`
+- Prior archive: `openspec/changes/archive/2026-07-31-mp-conciliation-v1/`
+- This change archive: `openspec/changes/archive/2026-07-31-mp-movements-v1/`

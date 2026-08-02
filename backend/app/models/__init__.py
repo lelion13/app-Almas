@@ -8,6 +8,24 @@ from app.models.closing import (
     Teacher,
 )
 from app.models.mp_account import MpAccount, MpOauthState
+from app.models.studio import (
+    Attendance,
+    Booking,
+    ClassSeries,
+    ClassSession,
+    FixedEnrollment,
+    PackProduct,
+    StudentPack,
+    StudioActivity,
+    StudioAuditLog,
+    StudioHoliday,
+    StudioInstructor,
+    StudioRoom,
+    StudioSettings,
+    StudioSite,
+    StudioStudent,
+    WaitlistEntry,
+)
 from app.models.user import User
 
 __all__ = [
@@ -21,4 +39,20 @@ __all__ = [
     "ManualExpense",
     "MpAccount",
     "MpOauthState",
+    "StudioSite",
+    "StudioRoom",
+    "StudioActivity",
+    "StudioInstructor",
+    "StudioStudent",
+    "ClassSeries",
+    "ClassSession",
+    "StudioHoliday",
+    "PackProduct",
+    "StudentPack",
+    "FixedEnrollment",
+    "Booking",
+    "WaitlistEntry",
+    "Attendance",
+    "StudioSettings",
+    "StudioAuditLog",
 ]

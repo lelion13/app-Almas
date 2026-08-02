@@ -7,6 +7,9 @@ import ClosingsListPage from "./pages/ClosingsListPage";
 import ClosingDetailPage from "./pages/ClosingDetailPage";
 import TeachersPage from "./pages/TeachersPage";
 import ConciliacionPage from "./pages/ConciliacionPage";
+import StudioAdminPage from "./pages/StudioAdminPage";
+import InstructorAgendaPage from "./pages/InstructorAgendaPage";
+import AlumnoPortalPage from "./pages/AlumnoPortalPage";
 
 function Protected({ children }: { children: ReactNode }) {
   const { token, loading } = useAuth();
@@ -21,6 +24,13 @@ function Protected({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function RoleIndex() {
+  const { me } = useAuth();
+  if (me?.role === "alumno") return <AlumnoPortalPage />;
+  if (me?.role === "instructor") return <InstructorAgendaPage />;
+  return <ClosingsListPage />;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -33,10 +43,13 @@ export default function App() {
           </Protected>
         }
       >
-        <Route index element={<ClosingsListPage />} />
+        <Route index element={<RoleIndex />} />
         <Route path="closings/:id" element={<ClosingDetailPage />} />
         <Route path="teachers" element={<TeachersPage />} />
         <Route path="conciliacion" element={<ConciliacionPage />} />
+        <Route path="studio" element={<StudioAdminPage />} />
+        <Route path="instructor" element={<InstructorAgendaPage />} />
+        <Route path="mis-clases" element={<AlumnoPortalPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

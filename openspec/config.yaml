@@ -7,7 +7,8 @@ context: |
   Architecture: routers → services → repositories → models; frontend pages + apiFetch + Protected routes
   Deploy: docker-compose.prod.yml (db, backend, frontend/Nginx); Traefik → frontend; GHCR images
   Testing: pytest (backend); Alembic product head = 004
-  Domains: auth, monthly-closings, siguefit-imports, expense-imports, manual-expenses, teachers, deployment, platform, mercado-pago
+  Domains: auth, monthly-closings, siguefit-imports, expense-imports, manual-expenses, teachers, deployment, platform, mercado-pago, studio-sites, studio-scheduling, studio-students, studio-packs, studio-audit
+  Active change: studio-ops-mvp (studio operations MVP — coexist with SigueFit/closings)
   Style: modular domain layout; RFC 2119 in specs; Spanish product copy, English code identifiers
 
 rules:

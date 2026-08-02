@@ -21,10 +21,23 @@
 
 ## Conciliación Mercado Pago
 - Menú admin **Conciliación** (`/conciliacion`): Cuentas y **Movimientos**.
-- Consulta rápida vía **Payments search** (cobros + devoluciones/contracargos). Sin reporte CSV Account Money (era demasiado lento).
-- Retiros a banco: **fuera** de esta consulta (ver `docs/mp-conciliation-lessons.md`).
+- Consulta rápida vía **Payments search** (cobros + devoluciones/contracargos; Documento/Email/Medio si MP los envía).
+- Retiros a banco y Account Money CSV: **fuera** del Consultar (ver lecciones).
 - Sin persistir filas; sin match a SigueFit.
-- Specs/change: `openspec/specs/mercado-pago/spec.md`, `openspec/changes/mp-movements-v1/`
+- Specs: `openspec/specs/mercado-pago/spec.md`
+- Lecciones: `docs/mp-conciliation-lessons.md`
+- Archives: `openspec/changes/archive/2026-07-31-mp-conciliation-v1/`, `.../2026-07-31-mp-movements-v1/`
+
+## Estudio (Studio Ops MVP)
+- Coexiste con cierres SigueFit: no los reemplaza.
+- Migración: `alembic upgrade head` (revisión `005_studio_ops`).
+- API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
+- UI:
+  - Admin → **Estudio** (`/studio`): sedes, salones, grilla, alumnos, paquetes, feriados, auditoría.
+  - Instructor → **Mi agenda** (`/instructor`): sesiones + asistencia.
+  - Alumno → **Mis clases** (`/mis-clases`): packs, reservar/cancelar, lista de espera (confirmación manual).
+- Packs de N clases (sin mensual libre); alcance `all_sedes` o `one_sede` al asignar.
+- Change activa: `openspec/changes/studio-ops-mvp/`.
 
 ## Auth Troubleshooting
 - `401 Unauthorized`: verify JWT secret, token expiry, and auth header format.

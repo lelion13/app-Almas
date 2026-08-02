@@ -44,12 +44,13 @@ Behavioral changes SHOULD go through OpenSpec (`openspec/changes/{name}/`) and m
 
 ### Requirement: Product scope (current)
 
-In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy, **and admin Conciliación Mercado Pago V1** (OAuth multi-account connect + on-demand payment income display without persistence or SigueFit matching).
+In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy, **and admin Conciliación Mercado Pago** (OAuth multi-account + on-demand **Movimientos** via Payments search, with Ingreso/Egreso filters and payer/medio columns when MP provides them; no persistence or SigueFit auto-match).
 
 Behavioral source of truth for MP: `openspec/specs/mercado-pago/spec.md`. Lessons/ops: `docs/mp-conciliation-lessons.md`.
 
 Explicitly out of product scope today:
-- Mercado Pago ↔ SigueFit reconciliation / auto-match / webhooks / egresos (beyond V1 Conciliación)
+- Mercado Pago ↔ SigueFit auto-match / webhooks
+- Account Money CSV as primary Conciliación Consultar; bank withdrawals in that path
 - Self-service password reset UI
 - Public user registration API
 - Refresh tokens for Almas JWT sessions

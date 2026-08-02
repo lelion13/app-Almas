@@ -1,0 +1,16 @@
+change: studio-ops-mvp
+status: applied
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: pending
+  archive: pending
+updated: 2026-08-02
+notes: |
+  Backend /api/v1/studio + migration 005. Frontend portals: Estudio (admin),
+  Mi agenda (instructor), Mis clases (alumno). Coexists with SigueFit/cierres.
+  Ready for verify then archive into openspec/specs/.

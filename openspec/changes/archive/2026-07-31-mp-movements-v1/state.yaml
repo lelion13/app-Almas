@@ -1,0 +1,15 @@
+change: mp-movements-v1
+status: archived
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: done
+  archive: done
+updated: 2026-07-31
+notes: |
+  Archived after prod lessons: Account Money too slow; shipped Payments fast path +
+  Movimientos UI + payer/medio columns. Main spec openspec/specs/mercado-pago/spec.md updated.

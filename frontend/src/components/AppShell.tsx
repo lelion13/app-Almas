@@ -6,6 +6,8 @@ export default function AppShell() {
   const { me, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const isAdmin = me?.role === "admin";
+  const isInstructor = me?.role === "instructor";
+  const isAlumno = me?.role === "alumno";
 
   const linkCls = ({ isActive }: { isActive: boolean }) =>
     `block rounded-lg px-3 py-2 text-sm font-medium ${
@@ -28,9 +30,9 @@ export default function AppShell() {
         </div>
         {open && (
           <nav className="border-t border-slate-100 px-2 pb-3 flex flex-col gap-1">
-            <NavLink to="/" className={linkCls} onClick={() => setOpen(false)} end>
+            {!isAlumno && !isInstructor && <NavLink to="/" className={linkCls} onClick={() => setOpen(false)} end>
               Cierres
-            </NavLink>
+            </NavLink>}
             {isAdmin && (
               <NavLink to="/teachers" className={linkCls} onClick={() => setOpen(false)}>
                 Profesoras
@@ -41,6 +43,9 @@ export default function AppShell() {
                 Conciliación
               </NavLink>
             )}
+            {isAdmin && <NavLink to="/studio" className={linkCls} onClick={() => setOpen(false)}>Estudio</NavLink>}
+            {isInstructor && <NavLink to="/instructor" className={linkCls} onClick={() => setOpen(false)}>Mi agenda</NavLink>}
+            {isAlumno && <NavLink to="/mis-clases" className={linkCls} onClick={() => setOpen(false)}>Mis clases</NavLink>}
             <button
               type="button"
               className="text-left rounded-lg px-3 py-2 text-sm text-red-700 hover:bg-red-50"
@@ -60,11 +65,12 @@ export default function AppShell() {
           Almas
         </Link>
         <nav className="flex flex-col gap-1">
-          <NavLink to="/" className={linkCls} end>
-            Cierres
-          </NavLink>
+          {!isAlumno && !isInstructor && <NavLink to="/" className={linkCls} end>Cierres</NavLink>}
           {isAdmin && <NavLink to="/teachers" className={linkCls}>Profesoras</NavLink>}
           {isAdmin && <NavLink to="/conciliacion" className={linkCls}>Conciliación</NavLink>}
+          {isAdmin && <NavLink to="/studio" className={linkCls}>Estudio</NavLink>}
+          {isInstructor && <NavLink to="/instructor" className={linkCls}>Mi agenda</NavLink>}
+          {isAlumno && <NavLink to="/mis-clases" className={linkCls}>Mis clases</NavLink>}
         </nav>
         <div className="mt-auto pt-6 text-xs text-slate-500 truncate">{me?.email}</div>
         <button

@@ -47,9 +47,9 @@ Antes del dump, en la DB local:
 SELECT version_num FROM alembic_version;
 ```
 
-El código de producto llega hasta **`004`** (`003_mp_accounts` + `004_mp_accounts_scopes_text`).
+El código de producto llega hasta **`005`** (`003`/`004` MP accounts + `005_studio_ops`).
 
-- Si ves **`001`–`004`** alineado con el repo: OK (en dump viejo, el entrypoint sube a head).
+- Si ves **`001`–`005`** alineado con el repo: OK (en dump viejo, el entrypoint sube a head; Studio Ops aplica `005` al arrancar).
 - Si ves un **`003` huérfano** de la feature MP de reconciliación **descartada** (tablas `income_reconciliations` / `mp_income_lines` / `mp_import_batches` y sin el `003_mp_accounts` actual): limpiá antes del dump:
 
 ```sql
@@ -104,7 +104,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
 # (en ese caso exportá con pg_dump -Fp en lugar de -Fc)
 
 # 4) Levantar backend/frontend
-# Tras restore con schema, el entrypoint corre alembic hasta head=004 (no-op si ya está en 004).
+# Tras restore con schema, el entrypoint corre alembic hasta head (hoy 005_studio_ops).
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
