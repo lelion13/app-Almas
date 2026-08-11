@@ -58,6 +58,7 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 - `default_class_duration_minutes` en salón (default/backfill 60).
 - `studio_room_hours`: un rango por día (0–6); crear salón = todo cerrado hasta **Horarios**.
 - Series: validación hard (día cerrado o clase fuera del rango → 422).
+- En la misma sede, los rangos abiertos de salones **activos** no pueden solaparse (mutex temporal; half-open; salones inactivos no cuentan). Validado al **Guardar** Horarios.
 - UI: botones **Editar** (teal) y **Horarios** (ámbar).
 
 ## Portales

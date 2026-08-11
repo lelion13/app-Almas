@@ -6,12 +6,13 @@
 - [x] 1.2 Alembic: `studio_room_hours` (room_id, weekday, is_open, open_time, close_time, unique room+weekday)
 - [x] 1.3 Models + schemas: RoomCreate/Patch/Response duration; Hours GET/PUT DTOs
 - [x] 1.4 Service: get/replace hours; validate times; reject site change if active series
+- [x] 1.4b Service: reject site-level open-hours overlap (active rooms only, half-open)
 - [x] 1.5 Router: create/patch extended; `GET|PUT /rooms/{id}/hours`
 
 ## Phase 2: Series enforcement
 
 - [x] 2.1 In `create_series`: hours containment + closed day
-- [x] 2.2 Unit tests: room_hours_allow_class
+- [x] 2.2 Unit tests: room_hours_allow_class; open_time_ranges_overlap
 
 ## Phase 3: Frontend Salones
 

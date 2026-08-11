@@ -44,6 +44,28 @@ Admin MUST set the schedule via a **Horarios** action modal that saves the full 
 - **WHEN** schedule is saved
 - **THEN** open_time and close_time MUST be null for that weekday
 
+### Requirement: Open hours exclusive among active rooms of the same site
+
+When saving room weekly hours (`PUT …/rooms/{id}/hours`), the system MUST reject the schedule if any open weekday range of this room overlaps another **active** room’s open range on the same weekday within the **same site**. Overlap MUST use half-open intervals `[open_time, close_time)` (so 09:00–12:00 and 12:00–21:00 MUST NOT conflict). Inactive rooms MUST be ignored. Rooms of other sites MUST be ignored.
+
+#### Scenario: Overlapping open windows rejected
+- **GIVEN** room A (active) at site S open Monday 09:00–13:00
+- **AND** room B (active) at site S
+- **WHEN** admin saves B as open Monday 12:00–18:00
+- **THEN** the response MUST be `422` and B’s previous hours MUST remain unchanged
+
+#### Scenario: Adjacent open windows accepted
+- **GIVEN** room A (active) at site S open Monday 09:00–12:00
+- **AND** room B (active) at site S
+- **WHEN** admin saves B as open Monday 12:00–21:00
+- **THEN** the schedule MUST be saved
+
+#### Scenario: Inactive peer ignored
+- **GIVEN** room A (inactive) at site S open Monday 09:00–18:00
+- **AND** room B (active) at site S
+- **WHEN** admin saves B as open Monday 10:00–12:00
+- **THEN** the schedule MUST be saved
+
 ### Requirement: Series must fit room open hours
 
 When creating (or updating) a class series, the system MUST reject the request if the room is closed on that weekday, or if the class half-open interval `[start_time, start_time + duration_minutes)` is not fully contained in the room’s open range for that weekday.

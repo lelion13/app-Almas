@@ -52,6 +52,18 @@ def _to_minutes(value: time) -> int:
     return value.hour * 60 + value.minute
 
 
+def open_time_ranges_overlap(a_open: time, a_close: time, b_open: time, b_close: time) -> bool:
+    """Same-day half-open [open, close) ranges overlap (09–12 and 12–21 do not)."""
+    return _to_minutes(a_open) < _to_minutes(b_close) and _to_minutes(b_open) < _to_minutes(a_close)
+
+
+_WEEKDAY_ES = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+
+
+def _fmt_hm(value: time) -> str:
+    return f"{value.hour:02d}:{value.minute:02d}"
+
+
 def room_hours_allow_class(
     is_open: bool,
     open_time: time | None,
@@ -156,25 +168,80 @@ def get_room_hours(db: Session, room_id: UUID) -> list[dict[str, Any]]:
     return days
 
 
+def _assert_no_site_room_hours_overlap(
+    db: Session,
+    room: StudioRoom,
+    proposed: dict[int, dict[str, Any]],
+) -> None:
+    """At most one active room per site may be open for overlapping times on a weekday."""
+    other_rooms = db.scalars(
+        select(StudioRoom).where(
+            StudioRoom.site_id == room.site_id,
+            StudioRoom.id != room.id,
+            StudioRoom.active.is_(True),
+        )
+    ).all()
+    if not other_rooms:
+        return
+    other_ids = [r.id for r in other_rooms]
+    name_by_id = {r.id: r.name for r in other_rooms}
+    other_hours = db.scalars(
+        select(StudioRoomHours).where(
+            StudioRoomHours.room_id.in_(other_ids),
+            StudioRoomHours.is_open.is_(True),
+        )
+    ).all()
+    hours_by_room_day: dict[tuple[UUID, int], StudioRoomHours] = {
+        (row.room_id, row.weekday): row for row in other_hours
+    }
+    for weekday in range(7):
+        payload = proposed[weekday]
+        if not payload["is_open"] or payload["open_time"] is None or payload["close_time"] is None:
+            continue
+        for other_id in other_ids:
+            other = hours_by_room_day.get((other_id, weekday))
+            if other is None or other.open_time is None or other.close_time is None:
+                continue
+            if open_time_ranges_overlap(
+                payload["open_time"], payload["close_time"], other.open_time, other.close_time
+            ):
+                day_label = _WEEKDAY_ES[weekday]
+                _error(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    (
+                        f"El horario se superpone con el salón '{name_by_id[other_id]}' "
+                        f"el {day_label} ({_fmt_hm(other.open_time)}–{_fmt_hm(other.close_time)})."
+                    ),
+                )
+
+
 def replace_room_hours(db: Session, room_id: UUID, days: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    _get(db, StudioRoom, room_id, "Room")
+    room = _get(db, StudioRoom, room_id, "Room")
     by_weekday = {int(day["weekday"]): day for day in days}
+    proposed: dict[int, dict[str, Any]] = {}
+    for weekday in range(7):
+        payload = by_weekday.get(weekday, {"weekday": weekday, "is_open": False, "open_time": None, "close_time": None})
+        is_open = bool(payload.get("is_open"))
+        proposed[weekday] = {
+            "weekday": weekday,
+            "is_open": is_open,
+            "open_time": payload.get("open_time") if is_open else None,
+            "close_time": payload.get("close_time") if is_open else None,
+        }
+    _assert_no_site_room_hours_overlap(db, room, proposed)
     existing = {
         row.weekday: row
         for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id == room_id)).all()
     }
     for weekday in range(7):
-        payload = by_weekday.get(weekday, {"weekday": weekday, "is_open": False, "open_time": None, "close_time": None})
-        is_open = bool(payload.get("is_open"))
-        open_time = payload.get("open_time") if is_open else None
-        close_time = payload.get("close_time") if is_open else None
+        payload = proposed[weekday]
         row = existing.get(weekday)
         if row is None:
             row = StudioRoomHours(room_id=room_id, weekday=weekday)
             db.add(row)
-        row.is_open = is_open
-        row.open_time = open_time
-        row.close_time = close_time
+        row.is_open = payload["is_open"]
+        row.open_time = payload["open_time"]
+        row.close_time = payload["close_time"]
     db.commit()
     return get_room_hours(db, room_id)
 

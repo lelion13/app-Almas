@@ -4,6 +4,7 @@ from uuid import uuid4
 from app.schemas.studio import SiteCreate, SitePatch, _normalize_maps_url
 from app.models.studio import StudentPack
 from app.services.studio_service import (
+    open_time_ranges_overlap,
     pack_can_book_at_site,
     room_hours_allow_class,
     times_overlap,
@@ -85,3 +86,14 @@ def test_room_hours_allow_class_half_open_containment():
     assert not room_hours_allow_class(True, open_t, close_t, time(11, 0), 90)
     assert not room_hours_allow_class(False, open_t, close_t, time(10, 0), 60)
     assert not room_hours_allow_class(True, None, None, time(10, 0), 60)
+
+
+def test_open_time_ranges_overlap_half_open():
+    # Adjacent ranges at the same site are allowed (back-to-back).
+    assert not open_time_ranges_overlap(time(9, 0), time(12, 0), time(12, 0), time(21, 0))
+    assert not open_time_ranges_overlap(time(12, 0), time(21, 0), time(9, 0), time(12, 0))
+    # Overlapping interiors must conflict.
+    assert open_time_ranges_overlap(time(9, 0), time(13, 0), time(12, 0), time(21, 0))
+    assert open_time_ranges_overlap(time(10, 0), time(12, 0), time(9, 0), time(11, 0))
+    # Full containment.
+    assert open_time_ranges_overlap(time(9, 0), time(18, 0), time(10, 0), time(11, 0))
