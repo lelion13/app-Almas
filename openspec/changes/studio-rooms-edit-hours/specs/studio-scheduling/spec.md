@@ -4,7 +4,7 @@
 
 ### Requirement: Room hours bound series times
 
-Class series create/update MUST be validated against the assigned room’s weekly open hours (see `studio-sites`). Closed weekday or class interval not contained in the open range MUST fail with `422` and a non-secret error detail suitable for UI display.
+Class series create/update MUST be validated against the assigned room’s weekly open hours (see `studio-sites`). No open ranges on the weekday, or class interval not fully contained in **at least one** open range, MUST fail with `422` and a non-secret error detail suitable for UI display.
 
 #### Scenario: Overlap still checked after hours pass
 - **GIVEN** a valid in-hours series slot that overlaps another series in the same room

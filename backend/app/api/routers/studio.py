@@ -82,14 +82,14 @@ def delete_room(room_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db))
 
 @router.get("/rooms/{room_id}/hours", response_model=RoomHoursResponse)
 def get_room_hours(room_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db)):
-    days = service.get_room_hours(db, room_id)
-    return RoomHoursResponse(room_id=room_id, days=days)
+    slots = service.get_room_hours(db, room_id)
+    return RoomHoursResponse(room_id=room_id, slots=slots)
 
 
 @router.put("/rooms/{room_id}/hours", response_model=RoomHoursResponse)
 def put_room_hours(room_id: UUID, body: RoomHoursReplace, _admin: AdminOnly, db: Session = Depends(get_db)):
-    days = service.replace_room_hours(db, room_id, [d.model_dump() for d in body.days])
-    return RoomHoursResponse(room_id=room_id, days=days)
+    slots = service.replace_room_hours(db, room_id, [s.model_dump() for s in body.slots])
+    return RoomHoursResponse(room_id=room_id, slots=slots)
 
 
 @router.get("/activities", response_model=list[ActivityResponse])

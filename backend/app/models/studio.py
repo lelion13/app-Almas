@@ -49,15 +49,15 @@ class StudioRoom(Base):
 
 
 class StudioRoomHours(Base):
+    """One open time window. Multiple rows per room+weekday are allowed."""
+
     __tablename__ = "studio_room_hours"
-    __table_args__ = (UniqueConstraint("room_id", "weekday", name="uq_studio_room_hours_room_weekday"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     room_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_rooms.id"), nullable=False)
     weekday: Mapped[int] = mapped_column(Integer, nullable=False)
-    is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    open_time: Mapped[time | None] = mapped_column(Time, nullable=True)
-    close_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    open_time: Mapped[time] = mapped_column(Time, nullable=False)
+    close_time: Mapped[time] = mapped_column(Time, nullable=False)
 
 
 class StudioActivity(Base):

@@ -4,12 +4,32 @@ import { ApiError, apiFetch } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
 
 type Item = Record<string, unknown> & { id: string };
-type HourDay = { weekday: number; is_open: boolean; open_time: string | null; close_time: string | null };
+/** Local draft slot; `key` is client-only until saved. */
+type HourSlot = { key: string; weekday: number; open_time: string; close_time: string };
 type Tab =
   | "sites" | "rooms" | "activities" | "instructors" | "students" | "series"
   | "sessions" | "holidays" | "products" | "packs" | "audit";
 
 const WEEKDAY_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+function toHm(value: string | null | undefined, fallback = "08:00") {
+  if (!value) return fallback;
+  return String(value).slice(0, 5);
+}
+
+function timeToMinutes(value: string) {
+  const [h, m] = value.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** Half-open [open, close) overlap for HH:MM strings. */
+function rangesOverlap(aOpen: string, aClose: string, bOpen: string, bClose: string) {
+  return timeToMinutes(aOpen) < timeToMinutes(bClose) && timeToMinutes(bOpen) < timeToMinutes(aClose);
+}
+
+function newSlotKey() {
+  return `slot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 const TABS: Array<[Tab, string]> = [
   ["sites", "Sedes"], ["rooms", "Salones"], ["activities", "Actividades"],
@@ -53,10 +73,12 @@ export default function StudioAdminPage() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editRoom, setEditRoom] = useState<Item | null>(null);
   const [hoursRoom, setHoursRoom] = useState<Item | null>(null);
-  const [hourDays, setHourDays] = useState<HourDay[]>([]);
+  const [hourSlots, setHourSlots] = useState<HourSlot[]>([]);
+  const [slotDraft, setSlotDraft] = useState({ weekday: "1", open_time: "08:00", close_time: "12:00" });
   const [editDraft, setEditDraft] = useState({ site_id: "", name: "", capacity: "8", duration: "60", active: true });
 
   const value = (key: string) => values[key] ?? "";
@@ -161,6 +183,17 @@ export default function StudioAdminPage() {
     }
   }
 
+  function closeEditRoom() {
+    setEditRoom(null);
+    setModalError(null);
+  }
+
+  function closeHoursRoom() {
+    setHoursRoom(null);
+    setHourSlots([]);
+    setModalError(null);
+  }
+
   async function openEditRoom(room: Item) {
     setEditRoom(room);
     setEditDraft({
@@ -171,11 +204,12 @@ export default function StudioAdminPage() {
       active: room.active !== false,
     });
     setError(null);
+    setModalError(null);
   }
 
   async function saveEditRoom() {
     if (!editRoom) return;
-    setBusy(true); setError(null); setNotice(null);
+    setBusy(true); setModalError(null); setNotice(null);
     try {
       await apiFetch(`/api/v1/studio/rooms/${editRoom.id}`, {
         method: "PATCH",
@@ -189,10 +223,10 @@ export default function StudioAdminPage() {
         }),
       });
       setNotice("Salón actualizado.");
-      setEditRoom(null);
+      closeEditRoom();
       await refreshRoomsCatalog();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "No se pudo actualizar el salón.");
+      setModalError(e instanceof ApiError ? e.message : "No se pudo actualizar el salón.");
     } finally {
       setBusy(false);
     }
@@ -201,45 +235,81 @@ export default function StudioAdminPage() {
   async function openHoursRoom(room: Item) {
     setHoursRoom(room);
     setError(null);
+    setModalError(null);
+    setSlotDraft({ weekday: "1", open_time: "08:00", close_time: "12:00" });
     try {
-      const res = await apiFetch<{ room_id: string; days: HourDay[] }>(`/api/v1/studio/rooms/${room.id}/hours`);
-      const byDay = new Map(res.days.map((d) => [d.weekday, d]));
-      setHourDays(
-        Array.from({ length: 7 }, (_, weekday) => {
-          const row = byDay.get(weekday);
-          return {
-            weekday,
-            is_open: row?.is_open ?? false,
-            open_time: row?.open_time ? String(row.open_time).slice(0, 5) : "08:00",
-            close_time: row?.close_time ? String(row.close_time).slice(0, 5) : "21:00",
-          };
-        }),
+      const res = await apiFetch<{ room_id: string; slots: Array<{ id?: string; weekday: number; open_time: string; close_time: string }> }>(
+        `/api/v1/studio/rooms/${room.id}/hours`,
       );
+      const slots = (res.slots ?? [])
+        .map((s) => ({
+          key: s.id ?? newSlotKey(),
+          weekday: s.weekday,
+          open_time: toHm(s.open_time),
+          close_time: toHm(s.close_time, "21:00"),
+        }))
+        .sort((a, b) => a.weekday - b.weekday || timeToMinutes(a.open_time) - timeToMinutes(b.open_time));
+      setHourSlots(slots);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudieron cargar los horarios.");
-      setHoursRoom(null);
+      closeHoursRoom();
     }
+  }
+
+  function addHourSlot() {
+    setModalError(null);
+    const weekday = Number(slotDraft.weekday);
+    const open_time = slotDraft.open_time;
+    const close_time = slotDraft.close_time;
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+      setModalError("Elegí un día válido.");
+      return;
+    }
+    if (!open_time || !close_time) {
+      setModalError("Completá el rango horario.");
+      return;
+    }
+    if (timeToMinutes(close_time) <= timeToMinutes(open_time)) {
+      setModalError("La hora de fin debe ser posterior a la de inicio.");
+      return;
+    }
+    const overlaps = hourSlots.some(
+      (s) => s.weekday === weekday && rangesOverlap(open_time, close_time, s.open_time, s.close_time),
+    );
+    if (overlaps) {
+      setModalError(`La franja se superpone con otra del mismo día (${WEEKDAY_LABELS[weekday]}).`);
+      return;
+    }
+    setHourSlots((rows) =>
+      [...rows, { key: newSlotKey(), weekday, open_time, close_time }].sort(
+        (a, b) => a.weekday - b.weekday || timeToMinutes(a.open_time) - timeToMinutes(b.open_time),
+      ),
+    );
+  }
+
+  function removeHourSlot(key: string) {
+    setModalError(null);
+    setHourSlots((rows) => rows.filter((s) => s.key !== key));
   }
 
   async function saveHoursRoom() {
     if (!hoursRoom) return;
-    setBusy(true); setError(null); setNotice(null);
+    setBusy(true); setModalError(null); setNotice(null);
     try {
-      const days = hourDays.map((d) => ({
-        weekday: d.weekday,
-        is_open: d.is_open,
-        open_time: d.is_open ? (d.open_time && d.open_time.length === 5 ? `${d.open_time}:00` : d.open_time) : null,
-        close_time: d.is_open ? (d.close_time && d.close_time.length === 5 ? `${d.close_time}:00` : d.close_time) : null,
+      const slots = hourSlots.map((s) => ({
+        weekday: s.weekday,
+        open_time: s.open_time.length === 5 ? `${s.open_time}:00` : s.open_time,
+        close_time: s.close_time.length === 5 ? `${s.close_time}:00` : s.close_time,
       }));
       await apiFetch(`/api/v1/studio/rooms/${hoursRoom.id}/hours`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ days }),
+        body: JSON.stringify({ slots }),
       });
       setNotice("Horarios guardados.");
-      setHoursRoom(null);
+      closeHoursRoom();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "No se pudieron guardar los horarios.");
+      setModalError(e instanceof ApiError ? e.message : "No se pudieron guardar los horarios.");
     } finally {
       setBusy(false);
     }
@@ -404,19 +474,24 @@ export default function StudioAdminPage() {
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Editar salón">
             <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-lg">
               <h3 className="text-lg font-semibold text-slate-900">Editar salón</h3>
+              {modalError && (
+                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+                  {modalError}
+                </p>
+              )}
               <div className="mt-3 grid gap-3">
                 <label className="space-y-1 text-sm"><span>Sede</span>
-                  <select className={inputClass} value={editDraft.site_id} onChange={(e) => setEditDraft((d) => ({ ...d, site_id: e.target.value }))}>
+                  <select className={inputClass} value={editDraft.site_id} onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, site_id: e.target.value })); }}>
                     {list("sites").map((site) => <option key={site.id} value={site.id}>{asText(site.name)}</option>)}
                   </select>
                 </label>
-                <Field label="Nombre" value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} />
-                <Field label="Capacidad" type="number" min="1" value={editDraft.capacity} onChange={(e) => setEditDraft((d) => ({ ...d, capacity: e.target.value }))} />
-                <Field label="Duración de clase (minutos)" type="number" min="1" value={editDraft.duration} onChange={(e) => setEditDraft((d) => ({ ...d, duration: e.target.value }))} />
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editDraft.active} onChange={(e) => setEditDraft((d) => ({ ...d, active: e.target.checked }))} /> Activo</label>
+                <Field label="Nombre" value={editDraft.name} onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, name: e.target.value })); }} />
+                <Field label="Capacidad" type="number" min="1" value={editDraft.capacity} onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, capacity: e.target.value })); }} />
+                <Field label="Duración de clase (minutos)" type="number" min="1" value={editDraft.duration} onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, duration: e.target.value })); }} />
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editDraft.active} onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, active: e.target.checked })); }} /> Activo</label>
               </div>
               <div className="mt-4 flex justify-end gap-2">
-                <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={() => setEditRoom(null)}>Cancelar</button>
+                <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={closeEditRoom}>Cancelar</button>
                 <button type="button" className={buttonClass} disabled={busy} onClick={() => void saveEditRoom()}>{busy ? "Guardando…" : "Guardar"}</button>
               </div>
             </div>
@@ -424,40 +499,101 @@ export default function StudioAdminPage() {
         )}
         {hoursRoom && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Horarios del salón">
-            <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-lg">
-              <h3 className="text-lg font-semibold text-slate-900">Horarios · {asText(hoursRoom.name)}</h3>
-              <p className="mt-1 text-xs text-slate-500">Días y rango en que el salón está abierto. Sin configurar, no se pueden crear series.</p>
-              <ul className="mt-3 space-y-2">
-                {hourDays.map((day, index) => (
-                  <li key={day.weekday} className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
-                    <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
-                      <input
-                        type="checkbox"
-                        checked={day.is_open}
-                        onChange={(e) => setHourDays((rows) => rows.map((r, i) => i === index ? { ...r, is_open: e.target.checked } : r))}
-                      />
-                      {WEEKDAY_LABELS[day.weekday]}
-                    </label>
+            <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-lg">
+              <div className="border-b border-slate-100 p-4">
+                <h3 className="text-lg font-semibold text-slate-900">Horarios · {asText(hoursRoom.name)}</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Podés cargar varias franjas el mismo día (p. ej. mañana y tarde). Sin franjas no se pueden crear series.
+                </p>
+                {modalError && (
+                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+                    {modalError}
+                  </p>
+                )}
+                <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] sm:items-end">
+                  <label className="space-y-1 text-sm text-slate-700">
+                    <span>Día</span>
+                    <select
+                      className={inputClass}
+                      value={slotDraft.weekday}
+                      onChange={(e) => { setModalError(null); setSlotDraft((d) => ({ ...d, weekday: e.target.value })); }}
+                    >
+                      {WEEKDAY_LABELS.map((label, weekday) => (
+                        <option key={weekday} value={String(weekday)}>{label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-sm text-slate-700">
+                    <span>Desde</span>
                     <input
                       type="time"
                       className={inputClass}
-                      disabled={!day.is_open}
-                      value={day.open_time ?? "08:00"}
-                      onChange={(e) => setHourDays((rows) => rows.map((r, i) => i === index ? { ...r, open_time: e.target.value } : r))}
+                      value={slotDraft.open_time}
+                      onChange={(e) => { setModalError(null); setSlotDraft((d) => ({ ...d, open_time: e.target.value })); }}
                     />
+                  </label>
+                  <label className="space-y-1 text-sm text-slate-700">
+                    <span>Hasta</span>
                     <input
                       type="time"
                       className={inputClass}
-                      disabled={!day.is_open}
-                      value={day.close_time ?? "21:00"}
-                      onChange={(e) => setHourDays((rows) => rows.map((r, i) => i === index ? { ...r, close_time: e.target.value } : r))}
+                      value={slotDraft.close_time}
+                      onChange={(e) => { setModalError(null); setSlotDraft((d) => ({ ...d, close_time: e.target.value })); }}
                     />
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-4 flex justify-end gap-2">
-                <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={() => setHoursRoom(null)}>Cancelar</button>
-                <button type="button" className={buttonClass} disabled={busy} onClick={() => void saveHoursRoom()}>{busy ? "Guardando…" : "Guardar horarios"}</button>
+                  </label>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                    onClick={addHourSlot}
+                  >
+                    Agregar
+                  </button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Franjas cargadas</p>
+                {hourSlots.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">
+                    Todavía no hay franjas. Agregá día y rango arriba.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="w-full min-w-[280px] text-left text-sm">
+                      <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Día</th>
+                          <th className="px-3 py-2 font-medium">Desde</th>
+                          <th className="px-3 py-2 font-medium">Hasta</th>
+                          <th className="px-3 py-2 font-medium"><span className="sr-only">Quitar</span></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {hourSlots.map((slot) => (
+                          <tr key={slot.key}>
+                            <td className="px-3 py-2 font-medium text-slate-900">{WEEKDAY_LABELS[slot.weekday]}</td>
+                            <td className="px-3 py-2 text-slate-700">{slot.open_time}</td>
+                            <td className="px-3 py-2 text-slate-700">{slot.close_time}</td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-red-700 hover:underline"
+                                onClick={() => removeHourSlot(slot.key)}
+                              >
+                                Quitar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
+                <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={closeHoursRoom}>Cancelar</button>
+                <button type="button" className={buttonClass} disabled={busy} onClick={() => void saveHoursRoom()}>
+                  {busy ? "Guardando…" : "Guardar horarios"}
+                </button>
               </div>
             </div>
           </div>

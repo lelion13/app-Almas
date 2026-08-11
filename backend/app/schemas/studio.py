@@ -91,51 +91,36 @@ class RoomResponse(ORMModel):
     created_at: datetime
 
 
-class RoomHoursDay(BaseModel):
+class RoomHourSlot(BaseModel):
     weekday: int = Field(ge=0, le=6)
-    is_open: bool = False
-    open_time: time | None = None
-    close_time: time | None = None
+    open_time: time
+    close_time: time
 
     @model_validator(mode="after")
-    def validate_open_range(self):
-        if self.is_open:
-            if self.open_time is None or self.close_time is None:
-                raise ValueError("open_time and close_time are required when is_open is true")
-            open_m = self.open_time.hour * 60 + self.open_time.minute
-            close_m = self.close_time.hour * 60 + self.close_time.minute
-            if close_m <= open_m:
-                raise ValueError("close_time must be after open_time on the same day")
-        else:
-            self.open_time = None
-            self.close_time = None
+    def validate_range(self):
+        open_m = self.open_time.hour * 60 + self.open_time.minute
+        close_m = self.close_time.hour * 60 + self.close_time.minute
+        if close_m <= open_m:
+            raise ValueError("close_time must be after open_time on the same day")
         return self
 
 
 class RoomHoursReplace(BaseModel):
-    days: list[RoomHoursDay]
+    """Full replace of open windows for a room. Empty list = no open hours."""
 
-    @model_validator(mode="after")
-    def unique_weekdays(self):
-        weekdays = [d.weekday for d in self.days]
-        if len(weekdays) != len(set(weekdays)):
-            raise ValueError("duplicate weekday in days")
-        for day in self.days:
-            if day.weekday < 0 or day.weekday > 6:
-                raise ValueError("weekday must be 0-6")
-        return self
+    slots: list[RoomHourSlot] = Field(default_factory=list)
 
 
-class RoomHoursDayResponse(ORMModel):
+class RoomHourSlotResponse(ORMModel):
+    id: UUID
     weekday: int
-    is_open: bool
-    open_time: time | None
-    close_time: time | None
+    open_time: time
+    close_time: time
 
 
 class RoomHoursResponse(BaseModel):
     room_id: UUID
-    days: list[RoomHoursDayResponse]
+    slots: list[RoomHourSlotResponse]
 
 
 class ActivityCreate(BaseModel):

@@ -53,13 +53,14 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 - Inactiva: soft: no sale en combos de alta; historial se mantiene
 - UI: pestaña Salones (create, lista, 2 modales) + API/DB
 
-## Salones: duración y horarios (007)
+## Salones: duración y horarios (007–008)
 
 - `default_class_duration_minutes` en salón (default/backfill 60).
-- `studio_room_hours`: un rango por día (0–6); crear salón = todo cerrado hasta **Horarios**.
-- Series: validación hard (día cerrado o clase fuera del rango → 422).
-- En la misma sede, los rangos abiertos de salones **activos** no pueden solaparse (mutex temporal; half-open; salones inactivos no cuentan). Validado al **Guardar** Horarios.
-- UI: botones **Editar** (teal) y **Horarios** (ámbar).
+- `studio_room_hours`: **varias franjas** por día (0=domingo … 6=sábado); cada fila es un rango abierto; sin filas = cerrado.
+- API: `GET|PUT /rooms/{id}/hours` body `{ slots: [{ weekday, open_time, close_time }] }` (replace completo).
+- Series: la clase debe caber en **alguna** franja del día (half-open).
+- Mutex de sede: franjas de salones activos no se solapan entre sí (half-open). Tampoco se solapan franjas del mismo salón el mismo día.
+- UI Horarios: alta por día/rango + grilla; quitar filas; Guardar persiste todo.
 
 ## Portales
 

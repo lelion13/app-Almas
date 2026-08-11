@@ -57,7 +57,7 @@ def open_time_ranges_overlap(a_open: time, a_close: time, b_open: time, b_close:
     return _to_minutes(a_open) < _to_minutes(b_close) and _to_minutes(b_open) < _to_minutes(a_close)
 
 
-_WEEKDAY_ES = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+_WEEKDAY_ES = ("domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado")
 
 
 def _fmt_hm(value: time) -> str:
@@ -82,16 +82,17 @@ def room_hours_allow_class(
 def assert_series_fits_room_hours(
     db: Session, room_id: UUID, weekday: int, start_time: time, duration_minutes: int
 ) -> None:
-    hours = db.scalar(
+    slots = db.scalars(
         select(StudioRoomHours).where(
             StudioRoomHours.room_id == room_id,
             StudioRoomHours.weekday == weekday,
         )
-    )
-    if hours is None or not hours.is_open:
+    ).all()
+    if not slots:
         _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Room is closed on this weekday")
-    if not room_hours_allow_class(
-        hours.is_open, hours.open_time, hours.close_time, start_time, duration_minutes
+    if not any(
+        room_hours_allow_class(True, slot.open_time, slot.close_time, start_time, duration_minutes)
+        for slot in slots
     ):
         _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Class time is outside room open hours")
 
@@ -149,29 +150,47 @@ def update_room(db: Session, room_id: UUID, values: dict[str, Any]) -> StudioRoo
 
 def get_room_hours(db: Session, room_id: UUID) -> list[dict[str, Any]]:
     _get(db, StudioRoom, room_id, "Room")
-    rows = {
-        row.weekday: row
-        for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id == room_id)).all()
-    }
-    days: list[dict[str, Any]] = []
-    for weekday in range(7):
-        row = rows.get(weekday)
-        if row is None:
-            days.append({"weekday": weekday, "is_open": False, "open_time": None, "close_time": None})
-        else:
-            days.append({
-                "weekday": row.weekday,
-                "is_open": row.is_open,
-                "open_time": row.open_time,
-                "close_time": row.close_time,
-            })
-    return days
+    rows = db.scalars(
+        select(StudioRoomHours)
+        .where(StudioRoomHours.room_id == room_id)
+        .order_by(StudioRoomHours.weekday, StudioRoomHours.open_time)
+    ).all()
+    return [
+        {
+            "id": row.id,
+            "weekday": row.weekday,
+            "open_time": row.open_time,
+            "close_time": row.close_time,
+        }
+        for row in rows
+    ]
+
+
+def _assert_no_internal_slot_overlap(slots: list[dict[str, Any]]) -> None:
+    by_day: dict[int, list[dict[str, Any]]] = {}
+    for slot in slots:
+        by_day.setdefault(int(slot["weekday"]), []).append(slot)
+    for weekday, day_slots in by_day.items():
+        sorted_slots = sorted(day_slots, key=lambda s: _to_minutes(s["open_time"]))
+        for i in range(len(sorted_slots)):
+            for j in range(i + 1, len(sorted_slots)):
+                a, b = sorted_slots[i], sorted_slots[j]
+                if open_time_ranges_overlap(a["open_time"], a["close_time"], b["open_time"], b["close_time"]):
+                    day_label = _WEEKDAY_ES[weekday]
+                    _error(
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        (
+                            f"Las franjas del {day_label} se superponen "
+                            f"({_fmt_hm(a['open_time'])}–{_fmt_hm(a['close_time'])} y "
+                            f"{_fmt_hm(b['open_time'])}–{_fmt_hm(b['close_time'])})."
+                        ),
+                    )
 
 
 def _assert_no_site_room_hours_overlap(
     db: Session,
     room: StudioRoom,
-    proposed: dict[int, dict[str, Any]],
+    proposed: list[dict[str, Any]],
 ) -> None:
     """At most one active room per site may be open for overlapping times on a weekday."""
     other_rooms = db.scalars(
@@ -186,62 +205,48 @@ def _assert_no_site_room_hours_overlap(
     other_ids = [r.id for r in other_rooms]
     name_by_id = {r.id: r.name for r in other_rooms}
     other_hours = db.scalars(
-        select(StudioRoomHours).where(
-            StudioRoomHours.room_id.in_(other_ids),
-            StudioRoomHours.is_open.is_(True),
-        )
+        select(StudioRoomHours).where(StudioRoomHours.room_id.in_(other_ids))
     ).all()
-    hours_by_room_day: dict[tuple[UUID, int], StudioRoomHours] = {
-        (row.room_id, row.weekday): row for row in other_hours
-    }
-    for weekday in range(7):
-        payload = proposed[weekday]
-        if not payload["is_open"] or payload["open_time"] is None or payload["close_time"] is None:
-            continue
-        for other_id in other_ids:
-            other = hours_by_room_day.get((other_id, weekday))
-            if other is None or other.open_time is None or other.close_time is None:
+    for slot in proposed:
+        for other in other_hours:
+            if other.weekday != int(slot["weekday"]):
                 continue
             if open_time_ranges_overlap(
-                payload["open_time"], payload["close_time"], other.open_time, other.close_time
+                slot["open_time"], slot["close_time"], other.open_time, other.close_time
             ):
-                day_label = _WEEKDAY_ES[weekday]
+                day_label = _WEEKDAY_ES[other.weekday]
                 _error(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     (
-                        f"El horario se superpone con el salón '{name_by_id[other_id]}' "
+                        f"El horario se superpone con el salón '{name_by_id[other.room_id]}' "
                         f"el {day_label} ({_fmt_hm(other.open_time)}–{_fmt_hm(other.close_time)})."
                     ),
                 )
 
 
-def replace_room_hours(db: Session, room_id: UUID, days: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def replace_room_hours(db: Session, room_id: UUID, slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
     room = _get(db, StudioRoom, room_id, "Room")
-    by_weekday = {int(day["weekday"]): day for day in days}
-    proposed: dict[int, dict[str, Any]] = {}
-    for weekday in range(7):
-        payload = by_weekday.get(weekday, {"weekday": weekday, "is_open": False, "open_time": None, "close_time": None})
-        is_open = bool(payload.get("is_open"))
-        proposed[weekday] = {
-            "weekday": weekday,
-            "is_open": is_open,
-            "open_time": payload.get("open_time") if is_open else None,
-            "close_time": payload.get("close_time") if is_open else None,
+    proposed = [
+        {
+            "weekday": int(slot["weekday"]),
+            "open_time": slot["open_time"],
+            "close_time": slot["close_time"],
         }
+        for slot in slots
+    ]
+    _assert_no_internal_slot_overlap(proposed)
     _assert_no_site_room_hours_overlap(db, room, proposed)
-    existing = {
-        row.weekday: row
-        for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id == room_id)).all()
-    }
-    for weekday in range(7):
-        payload = proposed[weekday]
-        row = existing.get(weekday)
-        if row is None:
-            row = StudioRoomHours(room_id=room_id, weekday=weekday)
-            db.add(row)
-        row.is_open = payload["is_open"]
-        row.open_time = payload["open_time"]
-        row.close_time = payload["close_time"]
+    for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id == room_id)).all():
+        db.delete(row)
+    for slot in proposed:
+        db.add(
+            StudioRoomHours(
+                room_id=room_id,
+                weekday=slot["weekday"],
+                open_time=slot["open_time"],
+                close_time=slot["close_time"],
+            )
+        )
     db.commit()
     return get_room_hours(db, room_id)
 

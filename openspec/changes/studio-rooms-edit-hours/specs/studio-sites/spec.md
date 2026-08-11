@@ -27,22 +27,22 @@ On Estudio → Salones, each room MUST offer an **Editar** action that opens a m
 
 ### Requirement: Room weekly open hours
 
-Each salón MUST support a weekly schedule of up to one open time range per weekday (0–6). For each weekday admin can mark open/closed; if open, open_time and close_time are required and close_time MUST be after open_time same calendar day (no overnight ranges in MVP).
+Each salón MUST support a weekly schedule of **zero or more open time ranges per weekday** (0–6, domingo…sábado). Each range MUST have open_time and close_time with close_time after open_time on the same calendar day (no overnight ranges in MVP). Ranges on the same weekday MUST NOT overlap (half-open). Empty schedule means the room is closed every day.
 
-On create, a room MUST start with **no open days** (all closed / empty schedule) until configured in **Horarios**.
+On create, a room MUST start with **no ranges** until configured in **Horarios**.
 
-Admin MUST set the schedule via a **Horarios** action modal that saves the full week (replace).
+Admin MUST set the schedule via a **Horarios** modal: add day + range into a list (grid), remove rows, then save full replace via API.
 
-#### Scenario: Save open Monday
+#### Scenario: Save two Monday ranges
 - **GIVEN** a room with empty schedule
-- **WHEN** admin sets Monday open 08:00–21:00 and saves Horarios
-- **THEN** GET room hours MUST include Monday open with that range
-- **AND** other weekdays MUST remain closed
+- **WHEN** admin adds Monday 08:00–12:00 and Monday 16:00–21:00 and saves Horarios
+- **THEN** GET room hours MUST return both Monday ranges
+- **AND** other weekdays MUST have no ranges
 
-#### Scenario: Closed weekday has no times
-- **GIVEN** a weekday marked closed
-- **WHEN** schedule is saved
-- **THEN** open_time and close_time MUST be null for that weekday
+#### Scenario: Same-day overlapping ranges rejected
+- **GIVEN** admin builds Monday 08:00–13:00 and Monday 12:00–18:00
+- **WHEN** they save Horarios
+- **THEN** the response MUST be `422`
 
 ### Requirement: Open hours exclusive among active rooms of the same site
 
@@ -68,20 +68,20 @@ When saving room weekly hours (`PUT …/rooms/{id}/hours`), the system MUST reje
 
 ### Requirement: Series must fit room open hours
 
-When creating (or updating) a class series, the system MUST reject the request if the room is closed on that weekday, or if the class half-open interval `[start_time, start_time + duration_minutes)` is not fully contained in the room’s open range for that weekday.
+When creating (or updating) a class series, the system MUST reject the request if the room has no open range on that weekday, or if the class half-open interval `[start_time, start_time + duration_minutes)` is not fully contained in **at least one** open range for that weekday.
 
 #### Scenario: Series on closed day rejected
-- **GIVEN** a room with no open weekdays
+- **GIVEN** a room with no open ranges
 - **WHEN** admin creates a series for that room
 - **THEN** the response MUST be `422`
 
-#### Scenario: Series outside open range rejected
-- **GIVEN** room open Monday 09:00–12:00
+#### Scenario: Series outside all open ranges rejected
+- **GIVEN** room open Monday 09:00–12:00 and 16:00–20:00
 - **WHEN** admin creates a Monday series at 11:00 lasting 90 minutes
 - **THEN** the response MUST be `422`
 
-#### Scenario: Series inside open range accepted
-- **GIVEN** room open Monday 08:00–21:00 and capacity sufficient
+#### Scenario: Series inside second range accepted
+- **GIVEN** room open Monday 08:00–12:00 and 16:00–21:00 and capacity sufficient
 - **WHEN** admin creates Monday series 18:00 duration 60 at free room slot
 - **THEN** the series MUST be created
 
@@ -97,8 +97,7 @@ Admin MUST be able to create, update, and soft-deactivate salones with: site, na
 - **THEN** the room MUST persist and appear in the Salones list
 
 ## Out of scope (this change)
-- Multiple open ranges per weekday
-- Prefilling Series form from room defaults
 - Overnight open ranges
 - Mass-cancel of existing series when hours shrink
+- Prefilling Series form from room defaults
 - Alumno/instructor editing rooms

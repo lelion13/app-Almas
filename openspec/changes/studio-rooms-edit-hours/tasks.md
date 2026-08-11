@@ -3,9 +3,9 @@
 ## Phase 1: Backend data & rooms API
 
 - [x] 1.1 Alembic: `default_class_duration_minutes` on `studio_rooms` (backfill 60)
-- [x] 1.2 Alembic: `studio_room_hours` (room_id, weekday, is_open, open_time, close_time, unique room+weekday)
-- [x] 1.3 Models + schemas: RoomCreate/Patch/Response duration; Hours GET/PUT DTOs
-- [x] 1.4 Service: get/replace hours; validate times; reject site change if active series
+- [x] 1.2 Alembic: `studio_room_hours` (room_id, weekday, open/close; multi-slot via 008)
+- [x] 1.3 Models + schemas: RoomCreate/Patch/Response duration; Hours GET/PUT `slots`
+- [x] 1.4 Service: get/replace slots; internal + site overlap; series fits any slot
 - [x] 1.4b Service: reject site-level open-hours overlap (active rooms only, half-open)
 - [x] 1.5 Router: create/patch extended; `GET|PUT /rooms/{id}/hours`
 
@@ -19,7 +19,7 @@
 - [x] 3.1 Create form: duration field
 - [x] 3.2 List: duration + Editar (teal) + Horarios (amber)
 - [x] 3.3 Modal Editar → PATCH
-- [x] 3.4 Modal Horarios → GET/PUT days 0–6
+- [x] 3.4 Modal Horarios → alta franjas + grilla + PUT slots
 
 ## Phase 4: Docs / close
 
