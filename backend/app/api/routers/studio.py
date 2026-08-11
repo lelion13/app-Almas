@@ -17,7 +17,8 @@ from app.schemas.studio import (
     AuditResponse, BookingCreate, BookingResponse, FixedEnrollmentCreate,
     FixedEnrollmentResponse, HolidayCreate, HolidayResponse, InstructorCreate,
     InstructorResponse, PackAssign, PackProductCreate, PackProductPatch,
-    PackProductResponse, ProfilePatch, RoomCreate, RoomPatch, RoomResponse, SeriesCreate,
+    PackProductResponse, ProfilePatch, RoomCreate, RoomHoursReplace, RoomHoursResponse,
+    RoomPatch, RoomResponse, SeriesCreate,
     SeriesPatch, SeriesResponse, SessionResponse, SettingsPatch, SettingsResponse,
     SiteCreate, SitePatch, SiteResponse, StudentCreate, StudentPackResponse,
     StudentPatch, StudentResponse, TransferCredits, TransferCreditsResponse,
@@ -71,12 +72,24 @@ def create_room(body: RoomCreate, _admin: AdminOnly, db: Session = Depends(get_d
 
 @router.patch("/rooms/{room_id}", response_model=RoomResponse)
 def patch_room(room_id: UUID, body: RoomPatch, _admin: AdminOnly, db: Session = Depends(get_db)):
-    return service.update_entity(db, service._get(db, StudioRoom, room_id, "Room"), body.model_dump(exclude_unset=True))
+    return service.update_room(db, room_id, body.model_dump(exclude_unset=True))
 
 
 @router.delete("/rooms/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_room(room_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db)):
     service.deactivate_entity(db, service._get(db, StudioRoom, room_id, "Room"))
+
+
+@router.get("/rooms/{room_id}/hours", response_model=RoomHoursResponse)
+def get_room_hours(room_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db)):
+    days = service.get_room_hours(db, room_id)
+    return RoomHoursResponse(room_id=room_id, days=days)
+
+
+@router.put("/rooms/{room_id}/hours", response_model=RoomHoursResponse)
+def put_room_hours(room_id: UUID, body: RoomHoursReplace, _admin: AdminOnly, db: Session = Depends(get_db)):
+    days = service.replace_room_hours(db, room_id, [d.model_dump() for d in body.days])
+    return RoomHoursResponse(room_id=room_id, days=days)
 
 
 @router.get("/activities", response_model=list[ActivityResponse])

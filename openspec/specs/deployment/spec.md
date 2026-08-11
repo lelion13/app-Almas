@@ -59,19 +59,19 @@ In production, the configured `MP_REDIRECT_URI` MUST be reachable through the pu
 
 ### Requirement: Migrations
 
-Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`005`** (`003`/`004` MP accounts + `005_studio_ops`).
+Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`006`** (`003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url`).
 
 Legacy note: if a restored dump still reports an orphan revision `003` from a **discarded** earlier MP reconciliation attempt that is **not** the current `003_mp_accounts` in the repo, operators MUST clean that revision before upgrade (drop orphan MP tables if present and stamp to a known good revision). New installs MUST only apply migrations present in the shipped image.
 
-#### Scenario: Fresh deploy applies studio migration
+#### Scenario: Fresh deploy applies studio migrations
 - **GIVEN** an empty database and images containing studio migrations
 - **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST reach head `005` including studio tables
+- **THEN** Alembic MUST reach head `006` including studio tables and site `maps_url`
 
-#### Scenario: Upgrade from pre-studio prod
-- **GIVEN** a database at revision `004`
+#### Scenario: Upgrade from pre-maps-url prod
+- **GIVEN** a database at revision `005`
 - **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST apply `005_studio_ops` without altering closing/MP data
+- **THEN** Alembic MUST apply `006_site_maps_url` adding nullable `maps_url` on `studio_sites`
 
 #### Scenario: Restored dump at unknown orphan 003
 - **GIVEN** `alembic_version` points at a discarded MP reconciliation revision not in the image

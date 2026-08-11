@@ -3,8 +3,14 @@ from uuid import uuid4
 
 from app.schemas.studio import SiteCreate, SitePatch, _normalize_maps_url
 from app.models.studio import StudentPack
-from app.services.studio_service import pack_can_book_at_site, times_overlap, transferred_credit_balances
+from app.services.studio_service import (
+    pack_can_book_at_site,
+    room_hours_allow_class,
+    times_overlap,
+    transferred_credit_balances,
+)
 import pytest
+from datetime import time
 
 
 def make_pack(**overrides) -> StudentPack:
@@ -70,3 +76,12 @@ def test_site_create_schema_optional_maps():
 def test_site_patch_can_clear_maps_url():
     patch = SitePatch(maps_url="")
     assert patch.maps_url is None
+
+
+def test_room_hours_allow_class_half_open_containment():
+    open_t, close_t = time(9, 0), time(12, 0)
+    assert room_hours_allow_class(True, open_t, close_t, time(9, 0), 60)
+    assert room_hours_allow_class(True, open_t, close_t, time(11, 0), 60)
+    assert not room_hours_allow_class(True, open_t, close_t, time(11, 0), 90)
+    assert not room_hours_allow_class(False, open_t, close_t, time(10, 0), 60)
+    assert not room_hours_allow_class(True, None, None, time(10, 0), 60)

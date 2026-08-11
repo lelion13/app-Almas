@@ -1,4 +1,4 @@
-change: studio-sites-edit-maps
+change: studio-rooms-edit-hours
 status: applied
 phases:
   explore: done
@@ -9,6 +9,6 @@ phases:
   apply: done
   verify: pending
   archive: pending
-updated: 2026-08-10
+updated: 2026-08-11
 notes: |
-  Applied: mig 006 maps_url, schemas, StudioAdmin Sedes inline edit, active pickers.
+  Applied: mig 007, room duration + hours, series validation, Salones modals.

@@ -17,7 +17,7 @@ from app.core.security import hash_password
 from app.models.studio import (
     Attendance, Booking, ClassSeries, ClassSession, FixedEnrollment, PackProduct,
     StudentPack, StudioActivity, StudioAuditLog, StudioHoliday, StudioInstructor,
-    StudioRoom, StudioSettings, StudioSite, StudioStudent, WaitlistEntry,
+    StudioRoom, StudioRoomHours, StudioSettings, StudioSite, StudioStudent, WaitlistEntry,
 )
 from app.models.user import User
 from app.services.studio_audit import write_audit
@@ -46,6 +46,42 @@ def times_overlap(first_start: time, first_duration_minutes: int, second_start: 
     first = first_start.hour * 60 + first_start.minute
     second = second_start.hour * 60 + second_start.minute
     return first < second + second_duration_minutes and second < first + first_duration_minutes
+
+
+def _to_minutes(value: time) -> int:
+    return value.hour * 60 + value.minute
+
+
+def room_hours_allow_class(
+    is_open: bool,
+    open_time: time | None,
+    close_time: time | None,
+    start: time,
+    duration_minutes: int,
+) -> bool:
+    """True if class half-open [start, start+duration) is inside the open range."""
+    if not is_open or open_time is None or close_time is None or duration_minutes < 1:
+        return False
+    start_m = _to_minutes(start)
+    end_m = start_m + duration_minutes
+    return _to_minutes(open_time) <= start_m and end_m <= _to_minutes(close_time)
+
+
+def assert_series_fits_room_hours(
+    db: Session, room_id: UUID, weekday: int, start_time: time, duration_minutes: int
+) -> None:
+    hours = db.scalar(
+        select(StudioRoomHours).where(
+            StudioRoomHours.room_id == room_id,
+            StudioRoomHours.weekday == weekday,
+        )
+    )
+    if hours is None or not hours.is_open:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Room is closed on this weekday")
+    if not room_hours_allow_class(
+        hours.is_open, hours.open_time, hours.close_time, start_time, duration_minutes
+    ):
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Class time is outside room open hours")
 
 
 def pack_can_book_at_site(pack: StudentPack, site_id: UUID, today: date | None = None) -> bool:
@@ -79,7 +115,68 @@ def create_site(db: Session, values: dict[str, Any]) -> StudioSite:
 
 def create_room(db: Session, values: dict[str, Any]) -> StudioRoom:
     _get(db, StudioSite, values["site_id"], "Site")
+    if "default_class_duration_minutes" not in values or values["default_class_duration_minutes"] is None:
+        values["default_class_duration_minutes"] = 60
     return _save(db, StudioRoom(**values))
+
+
+def update_room(db: Session, room_id: UUID, values: dict[str, Any]) -> StudioRoom:
+    room = _get(db, StudioRoom, room_id, "Room")
+    if "site_id" in values and values["site_id"] is not None and values["site_id"] != room.site_id:
+        has_series = db.scalar(
+            select(func.count(ClassSeries.id)).where(
+                ClassSeries.room_id == room.id,
+                ClassSeries.active.is_(True),
+            )
+        )
+        if has_series:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Cannot move room with active series to another site")
+        _get(db, StudioSite, values["site_id"], "Site")
+    return update_entity(db, room, values)
+
+
+def get_room_hours(db: Session, room_id: UUID) -> list[dict[str, Any]]:
+    _get(db, StudioRoom, room_id, "Room")
+    rows = {
+        row.weekday: row
+        for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id == room_id)).all()
+    }
+    days: list[dict[str, Any]] = []
+    for weekday in range(7):
+        row = rows.get(weekday)
+        if row is None:
+            days.append({"weekday": weekday, "is_open": False, "open_time": None, "close_time": None})
+        else:
+            days.append({
+                "weekday": row.weekday,
+                "is_open": row.is_open,
+                "open_time": row.open_time,
+                "close_time": row.close_time,
+            })
+    return days
+
+
+def replace_room_hours(db: Session, room_id: UUID, days: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    _get(db, StudioRoom, room_id, "Room")
+    by_weekday = {int(day["weekday"]): day for day in days}
+    existing = {
+        row.weekday: row
+        for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id == room_id)).all()
+    }
+    for weekday in range(7):
+        payload = by_weekday.get(weekday, {"weekday": weekday, "is_open": False, "open_time": None, "close_time": None})
+        is_open = bool(payload.get("is_open"))
+        open_time = payload.get("open_time") if is_open else None
+        close_time = payload.get("close_time") if is_open else None
+        row = existing.get(weekday)
+        if row is None:
+            row = StudioRoomHours(room_id=room_id, weekday=weekday)
+            db.add(row)
+        row.is_open = is_open
+        row.open_time = open_time
+        row.close_time = close_time
+    db.commit()
+    return get_room_hours(db, room_id)
 
 
 def create_activity(db: Session, values: dict[str, Any]) -> StudioActivity:
@@ -130,6 +227,9 @@ def create_series(db: Session, values: dict[str, Any]) -> ClassSeries:
         _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Class capacity exceeds room capacity")
     _get(db, StudioActivity, values["activity_id"], "Activity")
     _get(db, StudioInstructor, values["instructor_id"], "Instructor")
+    assert_series_fits_room_hours(
+        db, values["room_id"], values["weekday"], values["start_time"], values["duration_minutes"]
+    )
     existing = db.scalars(
         select(ClassSeries).where(
             ClassSeries.room_id == values["room_id"],

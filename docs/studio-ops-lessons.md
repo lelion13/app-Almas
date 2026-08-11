@@ -50,7 +50,15 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 
 - Columna opcional `studio_sites.maps_url` (http/https URL libre).
 - Solo admin en Estudio → Sedes. No se envía a alumnos todavía.
-- Inactiva: sigue en Sedes para reactivar; no aparece en combos de alta (salones/series/packs one_sede).
+- Inactiva: soft: no sale en combos de alta; historial se mantiene
+- UI: pestaña Salones (create, lista, 2 modales) + API/DB
+
+## Salones: duración y horarios (007)
+
+- `default_class_duration_minutes` en salón (default/backfill 60).
+- `studio_room_hours`: un rango por día (0–6); crear salón = todo cerrado hasta **Horarios**.
+- Series: validación hard (día cerrado o clase fuera del rango → 422).
+- UI: botones **Editar** (teal) y **Horarios** (ámbar).
 
 ## Portales
 

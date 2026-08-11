@@ -43,8 +43,21 @@ class StudioRoom(Base):
     site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_sites.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     capacity: Mapped[int] = mapped_column(Integer, nullable=False)
+    default_class_duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StudioRoomHours(Base):
+    __tablename__ = "studio_room_hours"
+    __table_args__ = (UniqueConstraint("room_id", "weekday", name="uq_studio_room_hours_room_weekday"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    room_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_rooms.id"), nullable=False)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    open_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    close_time: Mapped[time | None] = mapped_column(Time, nullable=True)
 
 
 class StudioActivity(Base):

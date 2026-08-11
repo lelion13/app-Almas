@@ -1,0 +1,14 @@
+change: studio-sites-edit-maps
+status: archived
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: done
+  archive: done
+updated: 2026-08-11
+notes: |
+  Archived. Main studio-sites + deployment head 006. maps_url admin-only.

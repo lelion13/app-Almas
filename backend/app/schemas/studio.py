@@ -69,6 +69,7 @@ class RoomCreate(BaseModel):
     site_id: UUID
     name: str = Field(min_length=1, max_length=255)
     capacity: int = Field(ge=1)
+    default_class_duration_minutes: int = Field(default=60, ge=1)
     active: bool = True
 
 
@@ -76,6 +77,7 @@ class RoomPatch(BaseModel):
     site_id: UUID | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
     capacity: int | None = Field(default=None, ge=1)
+    default_class_duration_minutes: int | None = Field(default=None, ge=1)
     active: bool | None = None
 
 
@@ -84,8 +86,56 @@ class RoomResponse(ORMModel):
     site_id: UUID
     name: str
     capacity: int
+    default_class_duration_minutes: int
     active: bool
     created_at: datetime
+
+
+class RoomHoursDay(BaseModel):
+    weekday: int = Field(ge=0, le=6)
+    is_open: bool = False
+    open_time: time | None = None
+    close_time: time | None = None
+
+    @model_validator(mode="after")
+    def validate_open_range(self):
+        if self.is_open:
+            if self.open_time is None or self.close_time is None:
+                raise ValueError("open_time and close_time are required when is_open is true")
+            open_m = self.open_time.hour * 60 + self.open_time.minute
+            close_m = self.close_time.hour * 60 + self.close_time.minute
+            if close_m <= open_m:
+                raise ValueError("close_time must be after open_time on the same day")
+        else:
+            self.open_time = None
+            self.close_time = None
+        return self
+
+
+class RoomHoursReplace(BaseModel):
+    days: list[RoomHoursDay]
+
+    @model_validator(mode="after")
+    def unique_weekdays(self):
+        weekdays = [d.weekday for d in self.days]
+        if len(weekdays) != len(set(weekdays)):
+            raise ValueError("duplicate weekday in days")
+        for day in self.days:
+            if day.weekday < 0 or day.weekday > 6:
+                raise ValueError("weekday must be 0-6")
+        return self
+
+
+class RoomHoursDayResponse(ORMModel):
+    weekday: int
+    is_open: bool
+    open_time: time | None
+    close_time: time | None
+
+
+class RoomHoursResponse(BaseModel):
+    room_id: UUID
+    days: list[RoomHoursDayResponse]
 
 
 class ActivityCreate(BaseModel):

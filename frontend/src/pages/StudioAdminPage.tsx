@@ -4,9 +4,12 @@ import { ApiError, apiFetch } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
 
 type Item = Record<string, unknown> & { id: string };
+type HourDay = { weekday: number; is_open: boolean; open_time: string | null; close_time: string | null };
 type Tab =
   | "sites" | "rooms" | "activities" | "instructors" | "students" | "series"
   | "sessions" | "holidays" | "products" | "packs" | "audit";
+
+const WEEKDAY_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 const TABS: Array<[Tab, string]> = [
   ["sites", "Sedes"], ["rooms", "Salones"], ["activities", "Actividades"],
@@ -51,6 +54,10 @@ export default function StudioAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editRoom, setEditRoom] = useState<Item | null>(null);
+  const [hoursRoom, setHoursRoom] = useState<Item | null>(null);
+  const [hourDays, setHourDays] = useState<HourDay[]>([]);
+  const [editDraft, setEditDraft] = useState({ site_id: "", name: "", capacity: "8", duration: "60", active: true });
 
   const value = (key: string) => values[key] ?? "";
   const setValue = (key: string, next: string) => setValues((current) => ({ ...current, [key]: next }));
@@ -149,6 +156,90 @@ export default function StudioAdminPage() {
       await load("sites", "/api/v1/studio/sites");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo guardar la sede.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openEditRoom(room: Item) {
+    setEditRoom(room);
+    setEditDraft({
+      site_id: String(room.site_id ?? ""),
+      name: String(room.name ?? ""),
+      capacity: String(room.capacity ?? "8"),
+      duration: String(room.default_class_duration_minutes ?? "60"),
+      active: room.active !== false,
+    });
+    setError(null);
+  }
+
+  async function saveEditRoom() {
+    if (!editRoom) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await apiFetch(`/api/v1/studio/rooms/${editRoom.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          site_id: editDraft.site_id,
+          name: editDraft.name.trim(),
+          capacity: Number(editDraft.capacity),
+          default_class_duration_minutes: Number(editDraft.duration),
+          active: editDraft.active,
+        }),
+      });
+      setNotice("Salón actualizado.");
+      setEditRoom(null);
+      await refreshRoomsCatalog();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo actualizar el salón.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openHoursRoom(room: Item) {
+    setHoursRoom(room);
+    setError(null);
+    try {
+      const res = await apiFetch<{ room_id: string; days: HourDay[] }>(`/api/v1/studio/rooms/${room.id}/hours`);
+      const byDay = new Map(res.days.map((d) => [d.weekday, d]));
+      setHourDays(
+        Array.from({ length: 7 }, (_, weekday) => {
+          const row = byDay.get(weekday);
+          return {
+            weekday,
+            is_open: row?.is_open ?? false,
+            open_time: row?.open_time ? String(row.open_time).slice(0, 5) : "08:00",
+            close_time: row?.close_time ? String(row.close_time).slice(0, 5) : "21:00",
+          };
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudieron cargar los horarios.");
+      setHoursRoom(null);
+    }
+  }
+
+  async function saveHoursRoom() {
+    if (!hoursRoom) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const days = hourDays.map((d) => ({
+        weekday: d.weekday,
+        is_open: d.is_open,
+        open_time: d.is_open ? (d.open_time && d.open_time.length === 5 ? `${d.open_time}:00` : d.open_time) : null,
+        close_time: d.is_open ? (d.close_time && d.close_time.length === 5 ? `${d.close_time}:00` : d.close_time) : null,
+      }));
+      await apiFetch(`/api/v1/studio/rooms/${hoursRoom.id}/hours`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days }),
+      });
+      setNotice("Horarios guardados.");
+      setHoursRoom(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudieron guardar los horarios.");
     } finally {
       setBusy(false);
     }
@@ -259,7 +350,20 @@ export default function StudioAdminPage() {
       </section>}
 
       {tab === "rooms" && <section className="space-y-4">
-        {form((e) => { e.preventDefault(); void submit("/api/v1/studio/rooms", { site_id: id("newRoomSite"), name: value("roomName"), capacity: Number(value("roomCapacity")) }, "Salón creado."); }, <><Select label="Sede" field="newRoomSite" items={selects.site} /><Field label="Nombre" value={value("roomName")} onChange={(e) => setValue("roomName", e.target.value)} required /><Field label="Capacidad" type="number" min="1" value={value("roomCapacity")} onChange={(e) => setValue("roomCapacity", e.target.value)} required /></>)}
+        {form((e) => {
+          e.preventDefault();
+          void submit("/api/v1/studio/rooms", {
+            site_id: id("newRoomSite"),
+            name: value("roomName"),
+            capacity: Number(value("roomCapacity")),
+            default_class_duration_minutes: Number(value("roomDuration") || 60),
+          }, "Salón creado.");
+        }, <>
+          <Select label="Sede" field="newRoomSite" items={selects.site} />
+          <Field label="Nombre" value={value("roomName")} onChange={(e) => setValue("roomName", e.target.value)} required />
+          <Field label="Capacidad" type="number" min="1" value={value("roomCapacity")} onChange={(e) => setValue("roomCapacity", e.target.value)} required />
+          <Field label="Duración de clase (minutos)" type="number" min="1" value={value("roomDuration") || "60"} onChange={(e) => setValue("roomDuration", e.target.value)} required />
+        </>)}
         <div className="flex flex-wrap gap-2">
           <select
             className={inputClass}
@@ -279,16 +383,84 @@ export default function StudioAdminPage() {
         ) : (
           <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
             {list("rooms").map((room) => (
-              <li key={room.id} className="px-4 py-3 text-sm">
-                <div className="font-medium text-slate-900">{asText(room.name)}</div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                  <span>sede: {siteName(room.site_id)}</span>
-                  <span>capacidad: {asText(room.capacity)}</span>
-                  <span>activo: {asText(room.active)}</span>
+              <li key={room.id} className="flex flex-col gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-medium text-slate-900">{asText(room.name)}{room.active === false ? " · inactivo" : ""}</div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>sede: {siteName(room.site_id)}</span>
+                    <span>capacidad: {asText(room.capacity)}</span>
+                    <span>duración: {asText(room.default_class_duration_minutes ?? 60)} min</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700" onClick={() => void openEditRoom(room)}>Editar</button>
+                  <button type="button" className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600" onClick={() => void openHoursRoom(room)}>Horarios</button>
                 </div>
               </li>
             ))}
           </ul>
+        )}
+        {editRoom && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Editar salón">
+            <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-lg">
+              <h3 className="text-lg font-semibold text-slate-900">Editar salón</h3>
+              <div className="mt-3 grid gap-3">
+                <label className="space-y-1 text-sm"><span>Sede</span>
+                  <select className={inputClass} value={editDraft.site_id} onChange={(e) => setEditDraft((d) => ({ ...d, site_id: e.target.value }))}>
+                    {list("sites").map((site) => <option key={site.id} value={site.id}>{asText(site.name)}</option>)}
+                  </select>
+                </label>
+                <Field label="Nombre" value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} />
+                <Field label="Capacidad" type="number" min="1" value={editDraft.capacity} onChange={(e) => setEditDraft((d) => ({ ...d, capacity: e.target.value }))} />
+                <Field label="Duración de clase (minutos)" type="number" min="1" value={editDraft.duration} onChange={(e) => setEditDraft((d) => ({ ...d, duration: e.target.value }))} />
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editDraft.active} onChange={(e) => setEditDraft((d) => ({ ...d, active: e.target.checked }))} /> Activo</label>
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={() => setEditRoom(null)}>Cancelar</button>
+                <button type="button" className={buttonClass} disabled={busy} onClick={() => void saveEditRoom()}>{busy ? "Guardando…" : "Guardar"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {hoursRoom && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Horarios del salón">
+            <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-lg">
+              <h3 className="text-lg font-semibold text-slate-900">Horarios · {asText(hoursRoom.name)}</h3>
+              <p className="mt-1 text-xs text-slate-500">Días y rango en que el salón está abierto. Sin configurar, no se pueden crear series.</p>
+              <ul className="mt-3 space-y-2">
+                {hourDays.map((day, index) => (
+                  <li key={day.weekday} className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={day.is_open}
+                        onChange={(e) => setHourDays((rows) => rows.map((r, i) => i === index ? { ...r, is_open: e.target.checked } : r))}
+                      />
+                      {WEEKDAY_LABELS[day.weekday]}
+                    </label>
+                    <input
+                      type="time"
+                      className={inputClass}
+                      disabled={!day.is_open}
+                      value={day.open_time ?? "08:00"}
+                      onChange={(e) => setHourDays((rows) => rows.map((r, i) => i === index ? { ...r, open_time: e.target.value } : r))}
+                    />
+                    <input
+                      type="time"
+                      className={inputClass}
+                      disabled={!day.is_open}
+                      value={day.close_time ?? "21:00"}
+                      onChange={(e) => setHourDays((rows) => rows.map((r, i) => i === index ? { ...r, close_time: e.target.value } : r))}
+                    />
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={() => setHoursRoom(null)}>Cancelar</button>
+                <button type="button" className={buttonClass} disabled={busy} onClick={() => void saveHoursRoom()}>{busy ? "Guardando…" : "Guardar horarios"}</button>
+              </div>
+            </div>
+          </div>
         )}
       </section>}
 
