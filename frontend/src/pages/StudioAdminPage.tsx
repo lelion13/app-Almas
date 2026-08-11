@@ -130,10 +130,30 @@ export default function StudioAdminPage() {
   };
   const roomsForSite = (siteId: string) =>
     list("roomsAll").filter((room) => !siteId || String(room.site_id) === siteId);
+  const activeSites = list("sites").filter((site) => site.active !== false);
   const selects = {
-    site: list("sites"), room: list("roomsAll"), activity: list("activities"),
+    site: activeSites, room: list("roomsAll"), activity: list("activities"),
     instructor: list("instructors"), student: list("students"), product: list("products"), pack: list("packs"),
   };
+  const allSites = list("sites");
+
+  async function patchSite(siteId: string, body: Record<string, unknown>, success: string) {
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await apiFetch(`/api/v1/studio/sites/${siteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setNotice(success);
+      await load("sites", "/api/v1/studio/sites");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo guardar la sede.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const Select = ({ label, field, items, required = true, onChangeExtra }: {
     label: string; field: string; items: Item[]; required?: boolean;
     onChangeExtra?: (next: string) => void;
@@ -169,8 +189,73 @@ export default function StudioAdminPage() {
       {notice && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
 
       {tab === "sites" && <section className="space-y-4">
-        {form((e) => { e.preventDefault(); void submit("/api/v1/studio/sites", { name: value("siteName"), address: value("siteAddress") || null }, "Sede creada."); }, <><Field label="Nombre" value={value("siteName")} onChange={(e) => setValue("siteName", e.target.value)} required /><Field label="Dirección (opcional)" value={value("siteAddress")} onChange={(e) => setValue("siteAddress", e.target.value)} /></>)}
-        <List items={list("sites")} fields={["name", "address", "active"]} />
+        {form((e) => {
+          e.preventDefault();
+          void submit("/api/v1/studio/sites", {
+            name: value("siteName"),
+            address: value("siteAddress") || null,
+            active: value("siteActive") !== "off",
+            maps_url: value("siteMapsUrl") || null,
+          }, "Sede creada.");
+        }, <>
+          <Field label="Nombre" value={value("siteName")} onChange={(e) => setValue("siteName", e.target.value)} required />
+          <Field label="Dirección (opcional)" value={value("siteAddress")} onChange={(e) => setValue("siteAddress", e.target.value)} />
+          <Field label="Link Google Maps (opcional)" type="url" placeholder="https://maps.google.com/..." value={value("siteMapsUrl")} onChange={(e) => setValue("siteMapsUrl", e.target.value)} />
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={value("siteActive") !== "off"} onChange={(e) => setValue("siteActive", e.target.checked ? "on" : "off")} />
+            Activa
+          </label>
+        </>)}
+        {allSites.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">No hay sedes.</p>
+        ) : (
+          <ul className="space-y-3">
+            {allSites.map((site) => {
+              const nameVal = values[`edit-${site.id}-name`] ?? String(site.name ?? "");
+              const addressVal = values[`edit-${site.id}-address`] ?? (site.address == null ? "" : String(site.address));
+              const mapsVal = values[`edit-${site.id}-maps_url`] ?? (site.maps_url == null ? "" : String(site.maps_url));
+              const activeVal = values[`edit-${site.id}-active`] !== undefined
+                ? values[`edit-${site.id}-active`] === "on"
+                : site.active !== false;
+              return (
+                <li key={site.id} className={`rounded-xl border p-4 ${site.active === false ? "border-slate-200 bg-slate-50 opacity-90" : "border-slate-200 bg-white"}`}>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-slate-900">{asText(site.name)}</span>
+                    {site.active === false && <span className="rounded bg-slate-200 px-2 py-0.5 text-xs text-slate-700">Inactiva</span>}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Nombre" value={nameVal} onChange={(e) => setValue(`edit-${site.id}-name`, e.target.value)} required />
+                    <Field label="Dirección" value={addressVal} onChange={(e) => setValue(`edit-${site.id}-address`, e.target.value)} />
+                    <Field label="Link Google Maps" type="url" value={mapsVal} onChange={(e) => setValue(`edit-${site.id}-maps_url`, e.target.value)} placeholder="https://maps.google.com/..." />
+                    <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={activeVal}
+                        onChange={(e) => setValue(`edit-${site.id}-active`, e.target.checked ? "on" : "off")}
+                      />
+                      Activa
+                    </label>
+                  </div>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      className={buttonClass}
+                      disabled={busy}
+                      onClick={() => void patchSite(site.id, {
+                        name: nameVal.trim(),
+                        address: addressVal.trim() || null,
+                        maps_url: mapsVal.trim() || null,
+                        active: activeVal,
+                      }, "Sede actualizada.")}
+                    >
+                      {busy ? "Guardando…" : "Guardar"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>}
 
       {tab === "rooms" && <section className="space-y-4">
@@ -185,7 +270,7 @@ export default function StudioAdminPage() {
             }}
           >
             <option value="">Todas las sedes</option>
-            {selects.site.map((site) => <option key={site.id} value={site.id}>{asText(site.name)}</option>)}
+            {list("sites").map((site) => <option key={site.id} value={site.id}>{asText(site.name)}{site.active === false ? " (inactiva)" : ""}</option>)}
           </select>
           <button type="button" className="rounded-lg border px-3 text-sm" onClick={() => void refreshRoomsCatalog()}>Actualizar</button>
         </div>

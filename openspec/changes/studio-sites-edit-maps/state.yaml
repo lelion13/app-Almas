@@ -1,0 +1,14 @@
+change: studio-sites-edit-maps
+status: applied
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: pending
+  archive: pending
+updated: 2026-08-10
+notes: |
+  Applied: mig 006 maps_url, schemas, StudioAdmin Sedes inline edit, active pickers.

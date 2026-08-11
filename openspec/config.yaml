@@ -2,13 +2,14 @@
 schema: spec-driven
 
 context: |
-  Project: app-Almas (cierres mensuales SigueFit + gastos) — https://almas.lionapp.cloud
+  Project: app-Almas (cierres mensuales SigueFit + gastos + Estudio + MP) — https://almas.lionapp.cloud
   Stack: React 18 + TS + Vite 5 + Tailwind 3 | FastAPI + Pydantic v2 + SQLAlchemy 2 + Alembic | PostgreSQL 18 | JWT+bcrypt
   Architecture: routers → services → repositories → models; frontend pages + apiFetch + Protected routes
   Deploy: docker-compose.prod.yml (db, backend, frontend/Nginx); Traefik → frontend; GHCR images
-  Testing: pytest (backend); Alembic product head = 004
+  Testing: pytest (backend); Alembic product head = 006 (site maps_url)
   Domains: auth, monthly-closings, siguefit-imports, expense-imports, manual-expenses, teachers, deployment, platform, mercado-pago, studio-sites, studio-scheduling, studio-students, studio-packs, studio-audit
-  Active change: studio-ops-mvp (studio operations MVP — coexist with SigueFit/closings)
+  Active change: studio-sites-edit-maps (applied — await verify/archive)
+
   Style: modular domain layout; RFC 2119 in specs; Spanish product copy, English code identifiers
 
 rules:

@@ -2,31 +2,65 @@
 
 from datetime import date, datetime, time
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ORMModel(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _normalize_maps_url(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        parsed = urlparse(text)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError("maps_url must be an http(s) URL")
+        if len(text) > 2048:
+            raise ValueError("maps_url is too long")
+        return text
+    raise ValueError("maps_url must be a string")
+
+
 class SiteCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     address: str | None = Field(default=None, max_length=512)
     active: bool = True
+    maps_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("maps_url", mode="before")
+    @classmethod
+    def validate_maps_url(cls, value: Any) -> str | None:
+        return _normalize_maps_url(value)
 
 
 class SitePatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     address: str | None = Field(default=None, max_length=512)
     active: bool | None = None
+    maps_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("maps_url", mode="before")
+    @classmethod
+    def validate_maps_url(cls, value: Any) -> str | None:
+        # Allow explicit null clear; omit field for no change (exclude_unset on patch).
+        if value is None:
+            return None
+        return _normalize_maps_url(value)
 
 
 class SiteResponse(ORMModel):
     id: UUID
     name: str
     address: str | None
+    maps_url: str | None
     active: bool
     created_at: datetime
 

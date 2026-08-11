@@ -59,14 +59,19 @@ In production, the configured `MP_REDIRECT_URI` MUST be reachable through the pu
 
 ### Requirement: Migrations
 
-Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`004`** (`003_mp_accounts` + `004_mp_accounts_scopes_text`).
+Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`005`** (`003`/`004` MP accounts + `005_studio_ops`).
 
 Legacy note: if a restored dump still reports an orphan revision `003` from a **discarded** earlier MP reconciliation attempt that is **not** the current `003_mp_accounts` in the repo, operators MUST clean that revision before upgrade (drop orphan MP tables if present and stamp to a known good revision). New installs MUST only apply migrations present in the shipped image.
 
-#### Scenario: Fresh deploy applies accounts migration
-- **GIVEN** an empty database and images containing MP account migrations
+#### Scenario: Fresh deploy applies studio migration
+- **GIVEN** an empty database and images containing studio migrations
 - **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST reach head `004` including MP accounts storage with `scopes` as TEXT
+- **THEN** Alembic MUST reach head `005` including studio tables
+
+#### Scenario: Upgrade from pre-studio prod
+- **GIVEN** a database at revision `004`
+- **WHEN** backend starts with migrate enabled
+- **THEN** Alembic MUST apply `005_studio_ops` without altering closing/MP data
 
 #### Scenario: Restored dump at unknown orphan 003
 - **GIVEN** `alembic_version` points at a discarded MP reconciliation revision not in the image
@@ -96,8 +101,13 @@ Canonical runbooks:
 - `docs/vps-deploy.md`
 - `docs/runbook.md`
 - `docs/mp-conciliation-lessons.md`
+- `docs/studio-ops-lessons.md`
 - `.env.prod.example`
 - `docker-compose.prod.yml`
+
+### Requirement: Image pull on deploy
+
+Operators MUST `docker compose pull` before `up -d` when using mutable tags (e.g. `:main`). Platform “compose update” APIs that do not force-pull MAY leave containers on stale digests.
 
 ## Out of scope
 - Shared Postgres across apps

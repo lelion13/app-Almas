@@ -35,18 +35,53 @@ The system MUST expose `GET /api/v1/auth/me` requiring a valid JWT. The response
 
 ### Requirement: Roles
 
-Users MUST have a role of `admin` or `staff`. The JWT MUST carry the role claim. Backend dependencies MUST enforce:
-- **StaffOrAdmin**: `admin` or `staff` for operational endpoints
-- **AdminOnly**: `admin` for privileged mutations (teachers write, reopen finalized closing)
+Users MUST have a role of `admin`, `staff`, `instructor`, or `alumno`. The JWT MUST carry the role claim. Backend dependencies MUST enforce at least:
+- **StaffOrAdmin**: `admin` or `staff` for operational closing/expense endpoints
+- **AdminOnly**: `admin` for privileged mutations (teachers write, reopen finalized closing, studio admin)
+- **InstructorOnly**: `instructor` for instructor agenda/attendance
+- **AlumnoOnly**: `alumno` for student portal (`/studio/me/*`)
 
 #### Scenario: Staff forbidden from admin-only route
 - **Given** a valid JWT with role `staff`
 - **When** an AdminOnly endpoint is called
 - **Then** the response MUST be `403`
 
+### Requirement: Studio roles
+
+The system MUST support studio-scoped portal access via role:
+
+- `admin` MUST access studio administration (sedes, rooms, activities, students, packs, config, audit, mass cancel) and existing Almas admin features.
+- `instructor` MUST access only their own agenda and attendance for sessions they instruct; MUST NOT manage pack payments or other students.
+- `alumno` MUST access only their own portal (credits, bookings, book/cancel/waitlist confirm for self).
+- `staff` MUST retain existing closing/expense behavior; studio admin write APIs MUST be `admin` only (staff excluded from studio admin in MVP).
+
+#### Scenario: Instructor cannot manage packs
+- **GIVEN** an authenticated instructor
+- **WHEN** they call pack payment or student credit mutation APIs
+- **THEN** the response MUST be `403`
+
+#### Scenario: Alumno cannot see other students
+- **GIVEN** an authenticated alumno
+- **WHEN** they request another student’s profile or bookings
+- **THEN** the response MUST be `403`
+
+### Requirement: Admin creates login with temporary password
+
+Admin MUST be able to create a User linked to an Instructor or Student profile with a password supplied in the same create request (bcrypt-hashed). `login_email` and `password` MUST be supplied together (both or neither). The system MUST NOT log or return the password after create (admin sets it once in the form). Password recovery UI remains OUT OF SCOPE.
+
+#### Scenario: Create alumno user
+- **GIVEN** an admin creating a student with login
+- **WHEN** the create succeeds
+- **THEN** a User with role `alumno` MUST exist linked to that student and password MUST be stored as bcrypt hash only
+
 ### Requirement: Frontend session
 
-The frontend MUST store the access token in `localStorage` (key `almas_token`), attach it on authenticated `apiFetch` calls, and guard app routes so unauthenticated users are redirected to `/login`. Logout MAY be client-side only (discard token); `POST /api/v1/auth/logout` MAY return `204` without server-side session revocation.
+The frontend MUST store the access token in `localStorage` (key `almas_token`), attach it on authenticated `apiFetch` calls, and guard app routes so unauthenticated users are redirected to `/login`. Role MUST drive landing and nav:
+- `alumno` → Mis clases (`/mis-clases`)
+- `instructor` → Mi agenda (`/instructor`)
+- `admin` / `staff` → Cierres (and admin-only Estudio/Conciliación/Profesoras as applicable)
+
+Logout MAY be client-side only (discard token); `POST /api/v1/auth/logout` MAY return `204` without server-side session revocation.
 
 ### Requirement: Security defaults
 
@@ -54,9 +89,10 @@ The system MUST NOT log passwords, JWTs, or password hashes. Production (`APP_EN
 
 ### Requirement: User provisioning (ops)
 
-Creating users MUST be available via operational tooling (`backend/scripts/create_user.py`). The product API MUST NOT expose public user registration. Password recovery UI is OUT OF SCOPE; ops MAY reset passwords via controlled scripts when available.
+Creating users MUST be available via operational tooling (`backend/scripts/create_user.py`) and via studio admin create (instructor/alumno with login). The product API MUST NOT expose public user registration. Password recovery UI is OUT OF SCOPE; ops MAY reset passwords via controlled scripts when available.
 
 ## Out of scope
-- OAuth / social login
+- OAuth / social login for Almas users
 - Refresh tokens
 - Self-service password reset email flow
+- Role `recepción`

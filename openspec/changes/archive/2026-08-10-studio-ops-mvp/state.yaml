@@ -1,0 +1,15 @@
+change: studio-ops-mvp
+status: archived
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: done
+  archive: done
+updated: 2026-08-10
+notes: |
+  Archived 2026-08-10. Main specs studio-* + auth/platform/deployment head 005.
+  Lessons: docs/studio-ops-lessons.md

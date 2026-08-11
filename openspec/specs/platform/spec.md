@@ -19,11 +19,11 @@ Baseline technology and architecture conventions for app-Almas. Future changes M
 
 ### Requirement: Backend layering
 
-New backend features MUST follow: **router (thin) → service (rules) → repository (SQLAlchemy) → model**, with Pydantic schemas at the API boundary.
+New backend features MUST follow: **router (thin) → service (rules) → repository (SQLAlchemy) → model**, with Pydantic schemas at the API boundary. Studio module ships primarily as `studio` router + `studio_service` / `studio_audit` (repos optional when ORM in service is consistent with existing modules).
 
 ### Requirement: Frontend layering
 
-New UI MUST use pages under `frontend/src/pages`, shared API helper `services/api.ts`, and auth via `useAuth` + route guards. Mobile-first Tailwind layouts SHOULD be preserved.
+New UI MUST use pages under `frontend/src/pages`, shared API helper `services/api.ts`, and auth via `useAuth` + route guards. Mobile-first Tailwind layouts SHOULD be preserved. Studio pages: `StudioAdminPage`, `InstructorAgendaPage`, `AlumnoPortalPage`.
 
 ### Requirement: Security
 
@@ -41,19 +41,31 @@ Behavioral changes SHOULD go through OpenSpec (`openspec/changes/{name}/`) and m
 - `deployment`
 - `platform` (this document)
 - `mercado-pago`
+- `studio-sites`
+- `studio-scheduling`
+- `studio-students`
+- `studio-packs`
+- `studio-audit`
 
 ### Requirement: Product scope (current)
 
-In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy, **and admin Conciliación Mercado Pago** (OAuth multi-account + on-demand **Movimientos** via Payments search, with Ingreso/Egreso filters and payer/medio columns when MP provides them; no persistence or SigueFit auto-match).
+In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy, admin Conciliación Mercado Pago (OAuth multi-account + on-demand **Movimientos** via Payments search), **and studio operations MVP** (multi-sede rooms/activities, students, bookings, packs, instructor/alumno portals) **coexisting** with SigueFit/closings/MP.
 
-Behavioral source of truth for MP: `openspec/specs/mercado-pago/spec.md`. Lessons/ops: `docs/mp-conciliation-lessons.md`.
+Behavioral sources of truth:
+- MP: `openspec/specs/mercado-pago/spec.md` — lessons: `docs/mp-conciliation-lessons.md`
+- Studio: `openspec/specs/studio-*.md` — lessons: `docs/studio-ops-lessons.md`
 
 Explicitly out of product scope today:
 - Mercado Pago ↔ SigueFit auto-match / webhooks
 - Account Money CSV as primary Conciliación Consultar; bank withdrawals in that path
-- Self-service password reset UI
-- Public user registration API
-- Refresh tokens for Almas JWT sessions
+- Feeding monthly closings from studio bookings / replacing SigueFit
+- Self-service password reset UI; public user registration API; refresh tokens
+- Studio: recepción role; auto email/SMS/WhatsApp; check-in; timed reschedule; plan freeze; mensual libre; MP pack checkout; AFIP; Google Calendar; Teachers↔Instructor FK; rich studio analytics
+
+#### Scenario: Studio coexists with closings
+- **GIVEN** the platform after studio-ops-mvp
+- **WHEN** admin uses Conciliación or cierres
+- **THEN** those flows MUST continue to work independently of studio modules
 
 #### Scenario: Conciliación is in product scope for admin
 - **GIVEN** the platform product scope
@@ -62,4 +74,5 @@ Explicitly out of product scope today:
 
 ## Related
 - `AGENTS.md`, `docs/quick-map.md`, `openspec/config.yaml`
-- `openspec/specs/mercado-pago/spec.md`
+- `docs/runbook.md`, `docs/vps-deploy.md`
+- `docs/mp-conciliation-lessons.md`, `docs/studio-ops-lessons.md`

@@ -30,14 +30,16 @@
 
 ## Estudio (Studio Ops MVP)
 - Coexiste con cierres SigueFit: no los reemplaza.
-- Migración: `alembic upgrade head` (revisión `005_studio_ops`).
+- Migración: `alembic upgrade head` (revisión `006_site_maps_url` / head studio).
 - API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
 - UI:
-  - Admin → **Estudio** (`/studio`): sedes, salones, grilla, alumnos, paquetes, feriados, auditoría.
+  - Admin → **Estudio** (`/studio`): sedes (crear + editar inline, `maps_url` opcional), salones, grilla, alumnos, paquetes, feriados, auditoría.
   - Instructor → **Mi agenda** (`/instructor`): sesiones + asistencia.
   - Alumno → **Mis clases** (`/mis-clases`): packs, reservar/cancelar, lista de espera (confirmación manual).
 - Packs de N clases (sin mensual libre); alcance `all_sedes` o `one_sede` al asignar.
-- Change activa: `openspec/changes/studio-ops-mvp/`.
+- Specs: `openspec/specs/studio-*.md` (+ `auth`, `platform`).
+- Lecciones: `docs/studio-ops-lessons.md`
+- Archive: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`
 
 ## Auth Troubleshooting
 - `401 Unauthorized`: verify JWT secret, token expiry, and auth header format.

@@ -1,8 +1,10 @@
 from datetime import date, timedelta, time
 from uuid import uuid4
 
+from app.schemas.studio import SiteCreate, SitePatch, _normalize_maps_url
 from app.models.studio import StudentPack
 from app.services.studio_service import pack_can_book_at_site, times_overlap, transferred_credit_balances
+import pytest
 
 
 def make_pack(**overrides) -> StudentPack:
@@ -43,3 +45,28 @@ def test_one_site_pack_rejects_other_site():
 
     assert pack_can_book_at_site(pack, allowed_site)
     assert not pack_can_book_at_site(pack, uuid4())
+
+
+def test_maps_url_accepts_https_and_normalizes_empty():
+    assert _normalize_maps_url("  https://maps.google.com/?q=test  ") == "https://maps.google.com/?q=test"
+    assert _normalize_maps_url("") is None
+    assert _normalize_maps_url(None) is None
+
+
+def test_maps_url_rejects_non_http():
+    with pytest.raises(ValueError):
+        _normalize_maps_url("ftp://example.com/place")
+    with pytest.raises(ValueError):
+        _normalize_maps_url("not-a-url")
+
+
+def test_site_create_schema_optional_maps():
+    site = SiteCreate(name="Centro", address=None, active=True, maps_url=None)
+    assert site.maps_url is None
+    site2 = SiteCreate(name="Centro", maps_url="https://maps.app.goo.gl/abc")
+    assert site2.maps_url == "https://maps.app.goo.gl/abc"
+
+
+def test_site_patch_can_clear_maps_url():
+    patch = SitePatch(maps_url="")
+    assert patch.maps_url is None

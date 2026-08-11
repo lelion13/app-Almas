@@ -108,9 +108,9 @@ def create_student(db: Session, values: dict[str, Any]) -> StudioStudent:
 
 
 def update_entity(db: Session, item: Any, values: dict[str, Any]) -> Any:
+    # values come from model_dump(exclude_unset=True); None clears optional fields.
     for key, value in values.items():
-        if value is not None:
-            setattr(item, key, value)
+        setattr(item, key, value)
     return _save(db, item)
 
 
