@@ -36,11 +36,24 @@ class StudioSite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class StudioSpace(Base):
+    """Physical area inside a site. Rooms that share a space cannot overlap hours/series."""
+
+    __tablename__ = "studio_spaces"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_sites.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class StudioRoom(Base):
     __tablename__ = "studio_rooms"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     site_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_sites.id"), nullable=False)
+    space_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_spaces.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     capacity: Mapped[int] = mapped_column(Integer, nullable=False)
     default_class_duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)

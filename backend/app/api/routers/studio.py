@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import AdminOnly, AdminOrInstructor, AlumnoOnly, InstructorOnly, get_db
 from app.models.studio import (
     Booking, ClassSeries, PackProduct, StudentPack, StudioActivity, StudioAuditLog,
-    StudioHoliday, StudioInstructor, StudioRoom, StudioSite, StudioStudent, WaitlistEntry,
+    StudioHoliday, StudioInstructor, StudioRoom, StudioSite, StudioSpace, StudioStudent, WaitlistEntry,
 )
 from app.schemas.studio import (
     ActivityCreate, ActivityPatch, ActivityResponse, AttendanceResponse, AttendanceSet,
@@ -20,7 +20,8 @@ from app.schemas.studio import (
     PackProductResponse, ProfilePatch, RoomCreate, RoomHoursReplace, RoomHoursResponse,
     RoomPatch, RoomResponse, SeriesCreate,
     SeriesPatch, SeriesResponse, SessionResponse, SettingsPatch, SettingsResponse,
-    SiteCreate, SitePatch, SiteResponse, StudentCreate, StudentPackResponse,
+    SiteCreate, SitePatch, SiteResponse, SpaceCreate, SpacePatch, SpaceResponse,
+    StudentCreate, StudentPackResponse,
     StudentPatch, StudentResponse, TransferCredits, TransferCreditsResponse,
     WaitlistConfirm, WaitlistJoin, WaitlistResponse,
 )
@@ -55,6 +56,29 @@ def patch_site(site_id: UUID, body: SitePatch, _admin: AdminOnly, db: Session = 
 @router.delete("/sites/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_site(site_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db)):
     service.deactivate_entity(db, service._get(db, StudioSite, site_id, "Site"))
+
+
+@router.get("/spaces", response_model=list[SpaceResponse])
+def list_spaces(_admin: AdminOnly, db: Session = Depends(get_db), site_id: UUID | None = None):
+    query = select(StudioSpace)
+    if site_id:
+        query = query.where(StudioSpace.site_id == site_id)
+    return db.scalars(query).all()
+
+
+@router.post("/spaces", response_model=SpaceResponse, status_code=status.HTTP_201_CREATED)
+def create_space(body: SpaceCreate, _admin: AdminOnly, db: Session = Depends(get_db)):
+    return service.create_space(db, body.model_dump())
+
+
+@router.patch("/spaces/{space_id}", response_model=SpaceResponse)
+def patch_space(space_id: UUID, body: SpacePatch, _admin: AdminOnly, db: Session = Depends(get_db)):
+    return service.update_space(db, space_id, body.model_dump(exclude_unset=True))
+
+
+@router.delete("/spaces/{space_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_space(space_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db)):
+    service.deactivate_entity(db, service._get(db, StudioSpace, space_id, "Space"))
 
 
 @router.get("/rooms", response_model=list[RoomResponse])

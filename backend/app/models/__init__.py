@@ -24,6 +24,7 @@ from app.models.studio import (
     StudioRoomHours,
     StudioSettings,
     StudioSite,
+    StudioSpace,
     StudioStudent,
     WaitlistEntry,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "MpAccount",
     "MpOauthState",
     "StudioSite",
+    "StudioSpace",
     "StudioRoom",
     "StudioRoomHours",
     "StudioActivity",

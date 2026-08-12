@@ -30,10 +30,10 @@
 
 ## Estudio (Studio Ops MVP)
 - Coexiste con cierres SigueFit: no los reemplaza.
-- Migración: `alembic upgrade head` (revisión **`008`** franjas múltiples por día en salones).
+- Migración: `alembic upgrade head` (revisión **`009`** espacios físicos compartidos entre salones).
 - API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
 - UI:
-  - Admin → **Estudio** (`/studio`): sedes; salones (crear + **Editar** + **Horarios** semanales); grilla, alumnos, paquetes, feriados, auditoría.
+  - Admin → **Estudio** (`/studio`): sedes; **espacios** (piso/sala compartida); salones (crear + **Editar** + **Horarios** semanales); grilla, alumnos, paquetes, feriados, auditoría.
   - Instructor → **Mi agenda** (`/instructor`): sesiones + asistencia.
   - Alumno → **Mis clases** (`/mis-clases`): packs, reservar/cancelar, lista de espera (confirmación manual).
 - Packs de N clases (sin mensual libre); alcance `all_sedes` o `one_sede` al asignar.

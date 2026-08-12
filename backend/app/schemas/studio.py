@@ -65,8 +65,29 @@ class SiteResponse(ORMModel):
     created_at: datetime
 
 
+class SpaceCreate(BaseModel):
+    site_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    active: bool = True
+
+
+class SpacePatch(BaseModel):
+    site_id: UUID | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    active: bool | None = None
+
+
+class SpaceResponse(ORMModel):
+    id: UUID
+    site_id: UUID
+    name: str
+    active: bool
+    created_at: datetime
+
+
 class RoomCreate(BaseModel):
     site_id: UUID
+    space_id: UUID | None = None
     name: str = Field(min_length=1, max_length=255)
     capacity: int = Field(ge=1)
     default_class_duration_minutes: int = Field(default=60, ge=1)
@@ -75,6 +96,7 @@ class RoomCreate(BaseModel):
 
 class RoomPatch(BaseModel):
     site_id: UUID | None = None
+    space_id: UUID | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
     capacity: int | None = Field(default=None, ge=1)
     default_class_duration_minutes: int | None = Field(default=None, ge=1)
@@ -84,6 +106,7 @@ class RoomPatch(BaseModel):
 class RoomResponse(ORMModel):
     id: UUID
     site_id: UUID
+    space_id: UUID | None
     name: str
     capacity: int
     default_class_duration_minutes: int

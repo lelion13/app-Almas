@@ -6,7 +6,7 @@
 - [x] 1.2 Alembic: `studio_room_hours` (room_id, weekday, open/close; multi-slot via 008)
 - [x] 1.3 Models + schemas: RoomCreate/Patch/Response duration; Hours GET/PUT `slots`
 - [x] 1.4 Service: get/replace slots; internal + site overlap; series fits any slot
-- [x] 1.4b Service: reject site-level open-hours overlap (active rooms only, half-open)
+- [x] 1.4b Service: hours/series mutex only among rooms that share `space_id` (not whole site)
 - [x] 1.5 Router: create/patch extended; `GET|PUT /rooms/{id}/hours`
 
 ## Phase 2: Series enforcement

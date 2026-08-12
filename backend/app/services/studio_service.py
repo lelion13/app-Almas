@@ -17,7 +17,7 @@ from app.core.security import hash_password
 from app.models.studio import (
     Attendance, Booking, ClassSeries, ClassSession, FixedEnrollment, PackProduct,
     StudentPack, StudioActivity, StudioAuditLog, StudioHoliday, StudioInstructor,
-    StudioRoom, StudioRoomHours, StudioSettings, StudioSite, StudioStudent, WaitlistEntry,
+    StudioRoom, StudioRoomHours, StudioSettings, StudioSite, StudioSpace, StudioStudent, WaitlistEntry,
 )
 from app.models.user import User
 from app.services.studio_audit import write_audit
@@ -126,16 +126,59 @@ def create_site(db: Session, values: dict[str, Any]) -> StudioSite:
     return _save(db, StudioSite(**values))
 
 
+def create_space(db: Session, values: dict[str, Any]) -> StudioSpace:
+    _get(db, StudioSite, values["site_id"], "Site")
+    return _save(db, StudioSpace(**values))
+
+
+def update_space(db: Session, space_id: UUID, values: dict[str, Any]) -> StudioSpace:
+    space = _get(db, StudioSpace, space_id, "Space")
+    if "site_id" in values and values["site_id"] is not None and values["site_id"] != space.site_id:
+        has_rooms = db.scalar(
+            select(func.count(StudioRoom.id)).where(
+                StudioRoom.space_id == space.id,
+                StudioRoom.active.is_(True),
+            )
+        )
+        if has_rooms:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Cannot move space with active rooms to another site")
+        _get(db, StudioSite, values["site_id"], "Site")
+    return update_entity(db, space, values)
+
+
+def _require_space_for_site(db: Session, space_id: UUID | None, site_id: UUID) -> StudioSpace | None:
+    if space_id is None:
+        return None
+    space = _get(db, StudioSpace, space_id, "Space")
+    if space.site_id != site_id:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Space does not belong to selected site")
+    return space
+
+
+def _peer_rooms_in_space(db: Session, space_id: UUID, exclude_room_id: UUID) -> list[StudioRoom]:
+    return list(
+        db.scalars(
+            select(StudioRoom).where(
+                StudioRoom.space_id == space_id,
+                StudioRoom.id != exclude_room_id,
+                StudioRoom.active.is_(True),
+            )
+        ).all()
+    )
+
+
 def create_room(db: Session, values: dict[str, Any]) -> StudioRoom:
     _get(db, StudioSite, values["site_id"], "Site")
     if "default_class_duration_minutes" not in values or values["default_class_duration_minutes"] is None:
         values["default_class_duration_minutes"] = 60
+    _require_space_for_site(db, values.get("space_id"), values["site_id"])
     return _save(db, StudioRoom(**values))
 
 
 def update_room(db: Session, room_id: UUID, values: dict[str, Any]) -> StudioRoom:
     room = _get(db, StudioRoom, room_id, "Room")
-    if "site_id" in values and values["site_id"] is not None and values["site_id"] != room.site_id:
+    next_site_id = values["site_id"] if "site_id" in values and values["site_id"] is not None else room.site_id
+    if next_site_id != room.site_id:
         has_series = db.scalar(
             select(func.count(ClassSeries.id)).where(
                 ClassSeries.room_id == room.id,
@@ -144,7 +187,19 @@ def update_room(db: Session, room_id: UUID, values: dict[str, Any]) -> StudioRoo
         )
         if has_series:
             _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Cannot move room with active series to another site")
-        _get(db, StudioSite, values["site_id"], "Site")
+        _get(db, StudioSite, next_site_id, "Site")
+        if "space_id" not in values:
+            values["space_id"] = None
+    if "space_id" in values:
+        _require_space_for_site(db, values["space_id"], next_site_id)
+        next_space_id = values["space_id"]
+        if next_space_id is not None:
+            current_hours = [
+                {"weekday": row.weekday, "open_time": row.open_time, "close_time": row.close_time}
+                for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id == room.id)).all()
+            ]
+            _assert_no_space_room_hours_overlap(db, room, current_hours, space_id=next_space_id)
+            _assert_no_space_series_overlap_for_room(db, room, space_id=next_space_id)
     return update_entity(db, room, values)
 
 
@@ -187,25 +242,21 @@ def _assert_no_internal_slot_overlap(slots: list[dict[str, Any]]) -> None:
                     )
 
 
-def _assert_no_site_room_hours_overlap(
+def _assert_no_space_room_hours_overlap(
     db: Session,
     room: StudioRoom,
     proposed: list[dict[str, Any]],
+    space_id: UUID | None,
 ) -> None:
-    """At most one active room per site may be open for overlapping times on a weekday."""
-    other_rooms = db.scalars(
-        select(StudioRoom).where(
-            StudioRoom.site_id == room.site_id,
-            StudioRoom.id != room.id,
-            StudioRoom.active.is_(True),
-        )
-    ).all()
+    """Rooms that share a physical space cannot have overlapping open windows."""
+    if space_id is None:
+        return
+    other_rooms = _peer_rooms_in_space(db, space_id, room.id)
     if not other_rooms:
         return
-    other_ids = [r.id for r in other_rooms]
     name_by_id = {r.id: r.name for r in other_rooms}
     other_hours = db.scalars(
-        select(StudioRoomHours).where(StudioRoomHours.room_id.in_(other_ids))
+        select(StudioRoomHours).where(StudioRoomHours.room_id.in_([r.id for r in other_rooms]))
     ).all()
     for slot in proposed:
         for other in other_hours:
@@ -219,7 +270,40 @@ def _assert_no_site_room_hours_overlap(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     (
                         f"El horario se superpone con el salón '{name_by_id[other.room_id]}' "
-                        f"el {day_label} ({_fmt_hm(other.open_time)}–{_fmt_hm(other.close_time)})."
+                        f"(mismo espacio) el {day_label} "
+                        f"({_fmt_hm(other.open_time)}–{_fmt_hm(other.close_time)})."
+                    ),
+                )
+
+
+def _assert_no_space_series_overlap_for_room(
+    db: Session, room: StudioRoom, space_id: UUID
+) -> None:
+    peers = _peer_rooms_in_space(db, space_id, room.id)
+    if not peers:
+        return
+    own = db.scalars(
+        select(ClassSeries).where(ClassSeries.room_id == room.id, ClassSeries.active.is_(True))
+    ).all()
+    if not own:
+        return
+    peer_series = db.scalars(
+        select(ClassSeries).where(
+            ClassSeries.room_id.in_([p.id for p in peers]),
+            ClassSeries.active.is_(True),
+        )
+    ).all()
+    name_by_id = {p.id: p.name for p in peers}
+    for series in own:
+        for other in peer_series:
+            if other.weekday != series.weekday:
+                continue
+            if times_overlap(series.start_time, series.duration_minutes, other.start_time, other.duration_minutes):
+                _error(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    (
+                        f"Hay series que se superponen con el salón '{name_by_id[other.room_id]}' "
+                        "en el mismo espacio."
                     ),
                 )
 
@@ -235,7 +319,7 @@ def replace_room_hours(db: Session, room_id: UUID, slots: list[dict[str, Any]]) 
         for slot in slots
     ]
     _assert_no_internal_slot_overlap(proposed)
-    _assert_no_site_room_hours_overlap(db, room, proposed)
+    _assert_no_space_room_hours_overlap(db, room, proposed, room.space_id)
     for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id == room_id)).all():
         db.delete(row)
     for slot in proposed:
@@ -302,15 +386,33 @@ def create_series(db: Session, values: dict[str, Any]) -> ClassSeries:
     assert_series_fits_room_hours(
         db, values["room_id"], values["weekday"], values["start_time"], values["duration_minutes"]
     )
+    mutex_room_ids = [room.id]
+    if room.space_id is not None:
+        mutex_room_ids.extend(p.id for p in _peer_rooms_in_space(db, room.space_id, room.id))
     existing = db.scalars(
         select(ClassSeries).where(
-            ClassSeries.room_id == values["room_id"],
+            ClassSeries.room_id.in_(mutex_room_ids),
             ClassSeries.weekday == values["weekday"],
             ClassSeries.active.is_(True),
         )
     ).all()
-    if any(times_overlap(values["start_time"], values["duration_minutes"], row.start_time, row.duration_minutes) for row in existing):
-        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Room has an overlapping series")
+    conflict = next(
+        (
+            row
+            for row in existing
+            if times_overlap(values["start_time"], values["duration_minutes"], row.start_time, row.duration_minutes)
+        ),
+        None,
+    )
+    if conflict is not None:
+        if conflict.room_id == room.id:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Room has an overlapping series")
+        peer = db.get(StudioRoom, conflict.room_id)
+        peer_name = peer.name if peer else "otro salón"
+        _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"La serie se superpone con el salón '{peer_name}' en el mismo espacio",
+        )
     return _save(db, ClassSeries(**values))
 
 

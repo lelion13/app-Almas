@@ -59,8 +59,16 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 - `studio_room_hours`: **varias franjas** por día (0=domingo … 6=sábado); cada fila es un rango abierto; sin filas = cerrado.
 - API: `GET|PUT /rooms/{id}/hours` body `{ slots: [{ weekday, open_time, close_time }] }` (replace completo).
 - Series: la clase debe caber en **alguna** franja del día (half-open).
-- Mutex de sede: franjas de salones activos no se solapan entre sí (half-open). Tampoco se solapan franjas del mismo salón el mismo día.
+- Mutex de **espacio físico** (no de sede): salones con el mismo `space_id` no pueden solapar franjas ni series. Sin espacio = pueden dar en paralelo en la misma sede.
+- Tampoco se solapan franjas del mismo salón el mismo día.
 - UI Horarios: alta por día/rango + grilla; quitar filas; Guardar persiste todo.
+
+## Espacios físicos (009)
+
+- Tabla `studio_spaces` (sede + nombre). `studio_rooms.space_id` opcional.
+- Caso: sede con dos salas reales → salones **sin** espacio (o espacios distintos) → horarios en paralelo.
+- Caso: Yoga y Postural en el mismo piso → mismo espacio → mutex de horarios y de series.
+- UI: pestaña **Espacios**; en Salones, combo opcional “Espacio físico”.
 
 ## Portales
 
