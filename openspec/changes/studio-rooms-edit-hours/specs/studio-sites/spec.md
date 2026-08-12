@@ -44,28 +44,26 @@ Admin MUST set the schedule via a **Horarios** modal: add day + range into a lis
 - **WHEN** they save Horarios
 - **THEN** the response MUST be `422`
 
-### Requirement: Open hours exclusive among rooms that share a physical space
+### Requirement: Open hours exclusive among rooms that share physical space
 
-Rooms MAY optionally belong to a **space** (`space_id`) within the same site. A space represents a shared physical area (e.g. one floor used by Yoga and Postural).
+A room MAY optionally declare that it shares physical space with **one other room of the same site** (`shares_space_with_room_id`). The link is bidirectional. Rooms without this attribute MAY run in parallel in the same site.
 
-When saving room weekly hours, the system MUST reject the schedule if any open weekday range overlaps another **active** room’s open range on the same weekday **in the same space**. Overlap MUST use half-open intervals `[open_time, close_time)`. Inactive rooms MUST be ignored. Rooms **without** `space_id`, or with a different space, MUST be allowed to run in parallel even in the same site.
+When saving room weekly hours, the system MUST reject the schedule if any open weekday range overlaps the peer room’s open range on the same weekday (active rooms only, half-open intervals). Assigning the share MUST also be rejected if current hours or active series would overlap the peer.
 
-Assigning a room to a space MUST also be rejected if current hours or active series would overlap peers in that space.
-
-#### Scenario: Shared space overlapping hours rejected
-- **GIVEN** rooms Yoga and Postural assigned to the same space
+#### Scenario: Shared pair overlapping hours rejected
+- **GIVEN** Yoga shares space with Postural
 - **AND** Yoga open Monday 09:00–13:00
 - **WHEN** admin saves Postural as open Monday 12:00–18:00
 - **THEN** the response MUST be `422`
 
-#### Scenario: Separate rooms in the same site may overlap
-- **GIVEN** two rooms in the same site with no space (or different spaces)
+#### Scenario: Unlinked rooms in the same site may overlap
+- **GIVEN** two rooms in the same site that do not share space
 - **AND** room A open Monday 09:00–13:00
 - **WHEN** admin saves room B as open Monday 12:00–18:00
 - **THEN** the schedule MUST be saved
 
-#### Scenario: Adjacent open windows in the same space accepted
-- **GIVEN** two rooms in the same space
+#### Scenario: Adjacent open windows for a shared pair accepted
+- **GIVEN** two rooms that share space
 - **AND** room A open Monday 09:00–12:00
 - **WHEN** admin saves room B as open Monday 12:00–21:00
 - **THEN** the schedule MUST be saved

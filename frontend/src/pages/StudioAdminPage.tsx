@@ -7,7 +7,7 @@ type Item = Record<string, unknown> & { id: string };
 /** Local draft slot; `key` is client-only until saved. */
 type HourSlot = { key: string; weekday: number; open_time: string; close_time: string };
 type Tab =
-  | "sites" | "spaces" | "rooms" | "activities" | "instructors" | "students" | "series"
+  | "sites" | "rooms" | "activities" | "instructors" | "students" | "series"
   | "sessions" | "holidays" | "products" | "packs" | "audit";
 
 const WEEKDAY_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -32,7 +32,7 @@ function newSlotKey() {
 }
 
 const TABS: Array<[Tab, string]> = [
-  ["sites", "Sedes"], ["spaces", "Espacios"], ["rooms", "Salones"], ["activities", "Actividades"],
+  ["sites", "Sedes"], ["rooms", "Salones"], ["activities", "Actividades"],
   ["instructors", "Instructores"], ["students", "Alumnos"], ["series", "Series"],
   ["sessions", "Sesiones"], ["holidays", "Feriados"], ["products", "Productos"],
   ["packs", "Paquetes"], ["audit", "Auditoría"],
@@ -79,7 +79,9 @@ export default function StudioAdminPage() {
   const [hoursRoom, setHoursRoom] = useState<Item | null>(null);
   const [hourSlots, setHourSlots] = useState<HourSlot[]>([]);
   const [slotDraft, setSlotDraft] = useState({ weekday: "1", open_time: "08:00", close_time: "12:00" });
-  const [editDraft, setEditDraft] = useState({ site_id: "", space_id: "", name: "", capacity: "8", duration: "60", active: true });
+  const [editDraft, setEditDraft] = useState({
+    site_id: "", share_space: false, share_room_id: "", name: "", capacity: "8", duration: "60", active: true,
+  });
 
   const value = (key: string) => values[key] ?? "";
   const setValue = (key: string, next: string) => setValues((current) => ({ ...current, [key]: next }));
@@ -102,7 +104,6 @@ export default function StudioAdminPage() {
   async function loadTab(next = tab) {
     const paths: Partial<Record<Tab, string>> = {
       sites: "/api/v1/studio/sites",
-      spaces: "/api/v1/studio/spaces",
       rooms: query("/api/v1/studio/rooms", { site_id: id("roomSite") }),
       activities: "/api/v1/studio/activities",
       instructors: "/api/v1/studio/instructors",
@@ -120,7 +121,7 @@ export default function StudioAdminPage() {
   useEffect(() => { void loadTab(); }, [tab]);
   useEffect(() => {
     void Promise.all([
-      load("sites", "/api/v1/studio/sites"), load("spaces", "/api/v1/studio/spaces"), load("activities", "/api/v1/studio/activities"),
+      load("sites", "/api/v1/studio/sites"), load("activities", "/api/v1/studio/activities"),
       load("instructors", "/api/v1/studio/instructors"), load("students", "/api/v1/studio/students"),
       load("products", "/api/v1/studio/pack-products"), load("roomsAll", "/api/v1/studio/rooms"),
       load("packs", "/api/v1/studio/student-packs"), load("series", "/api/v1/studio/series"),
@@ -141,7 +142,6 @@ export default function StudioAdminPage() {
       setNotice(success);
       await loadTab(reload);
       if (path.includes("/studio/rooms")) await load("roomsAll", "/api/v1/studio/rooms");
-      if (path.includes("/studio/spaces")) await load("spaces", "/api/v1/studio/spaces");
       if (path.includes("/studio/sites")) await load("sites", "/api/v1/studio/sites");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo guardar.");
@@ -159,15 +159,16 @@ export default function StudioAdminPage() {
     const site = list("sites").find((item) => item.id === siteId);
     return site ? asText(site.name) : asText(siteId);
   };
-  const spaceName = (spaceId: unknown) => {
-    if (!spaceId) return "—";
-    const space = list("spaces").find((item) => item.id === spaceId);
-    return space ? asText(space.name) : asText(spaceId);
+  const roomName = (roomId: unknown) => {
+    if (!roomId) return "—";
+    const room = list("roomsAll").find((item) => item.id === roomId) ?? list("rooms").find((item) => item.id === roomId);
+    return room ? asText(room.name) : asText(roomId);
   };
-  const spacesForSite = (siteId: string, includeInactive = false) =>
-    list("spaces").filter((space) => {
-      if (siteId && String(space.site_id) !== siteId) return false;
-      if (!includeInactive && space.active === false) return false;
+  const roomsForSiteExcept = (siteId: string, exceptId?: string) =>
+    list("roomsAll").filter((room) => {
+      if (siteId && String(room.site_id) !== siteId) return false;
+      if (exceptId && room.id === exceptId) return false;
+      if (room.active === false) return false;
       return true;
     });
   const roomsForSite = (siteId: string) =>
@@ -211,7 +212,8 @@ export default function StudioAdminPage() {
     setEditRoom(room);
     setEditDraft({
       site_id: String(room.site_id ?? ""),
-      space_id: room.space_id ? String(room.space_id) : "",
+      share_space: Boolean(room.shares_space_with_room_id),
+      share_room_id: room.shares_space_with_room_id ? String(room.shares_space_with_room_id) : "",
       name: String(room.name ?? ""),
       capacity: String(room.capacity ?? "8"),
       duration: String(room.default_class_duration_minutes ?? "60"),
@@ -223,6 +225,10 @@ export default function StudioAdminPage() {
 
   async function saveEditRoom() {
     if (!editRoom) return;
+    if (editDraft.share_space && !editDraft.share_room_id) {
+      setModalError("Elegí el salón con el que comparte el espacio.");
+      return;
+    }
     setBusy(true); setModalError(null); setNotice(null);
     try {
       await apiFetch(`/api/v1/studio/rooms/${editRoom.id}`, {
@@ -230,7 +236,7 @@ export default function StudioAdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           site_id: editDraft.site_id,
-          space_id: editDraft.space_id || null,
+          shares_space_with_room_id: editDraft.share_space ? editDraft.share_room_id : null,
           name: editDraft.name.trim(),
           capacity: Number(editDraft.capacity),
           default_class_duration_minutes: Number(editDraft.duration),
@@ -434,41 +440,16 @@ export default function StudioAdminPage() {
         )}
       </section>}
 
-      {tab === "spaces" && <section className="space-y-4">
-        <p className="text-sm text-slate-600">
-          Un espacio es el piso o sala física. Si Yoga y Postural comparten el mismo piso, asignalos al mismo espacio: ahí no se pueden pisar horarios ni series. Salones sin espacio pueden dar en paralelo.
-        </p>
-        {form((e) => {
-          e.preventDefault();
-          void submit("/api/v1/studio/spaces", {
-            site_id: id("newSpaceSite"),
-            name: value("spaceName"),
-            active: true,
-          }, "Espacio creado.");
-        }, <>
-          <Select label="Sede" field="newSpaceSite" items={selects.site} />
-          <Field label="Nombre" value={value("spaceName")} onChange={(e) => setValue("spaceName", e.target.value)} required placeholder="Sala compartida, piso 1…" />
-        </>)}
-        {list("spaces").length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">No hay espacios. Creá uno solo si dos o más salones comparten el mismo lugar físico.</p>
-        ) : (
-          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-            {list("spaces").map((space) => (
-              <li key={space.id} className="px-4 py-3 text-sm">
-                <div className="font-medium text-slate-900">{asText(space.name)}{space.active === false ? " · inactivo" : ""}</div>
-                <div className="mt-1 text-xs text-slate-500">sede: {siteName(space.site_id)}</div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>}
-
       {tab === "rooms" && <section className="space-y-4">
         {form((e) => {
           e.preventDefault();
+          if (value("newRoomShares") === "on" && !id("newRoomSharePeer")) {
+            setError("Elegí el salón con el que comparte el espacio.");
+            return;
+          }
           void submit("/api/v1/studio/rooms", {
             site_id: id("newRoomSite"),
-            space_id: id("newRoomSpace") || null,
+            shares_space_with_room_id: value("newRoomShares") === "on" ? id("newRoomSharePeer") : null,
             name: value("roomName"),
             capacity: Number(value("roomCapacity")),
             default_class_duration_minutes: Number(value("roomDuration") || 60),
@@ -478,17 +459,30 @@ export default function StudioAdminPage() {
             label="Sede"
             field="newRoomSite"
             items={selects.site}
-            onChangeExtra={() => setValue("newRoomSpace", "")}
+            onChangeExtra={() => setValue("newRoomSharePeer", "")}
           />
-          <label className="space-y-1 text-sm text-slate-700">
-            <span>Espacio físico (opcional)</span>
-            <select className={inputClass} value={value("newRoomSpace")} onChange={(e) => setValue("newRoomSpace", e.target.value)}>
-              <option value="">Ninguno (puede dar en paralelo)</option>
-              {spacesForSite(value("newRoomSite")).map((space) => (
-                <option key={space.id} value={space.id}>{asText(space.name)}</option>
-              ))}
-            </select>
+          <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={value("newRoomShares") === "on"}
+              onChange={(e) => {
+                setValue("newRoomShares", e.target.checked ? "on" : "off");
+                if (!e.target.checked) setValue("newRoomSharePeer", "");
+              }}
+            />
+            Comparte espacio físico con otro salón
           </label>
+          {value("newRoomShares") === "on" && (
+            <label className="space-y-1 text-sm text-slate-700 sm:col-span-2">
+              <span>Salón con el que comparte</span>
+              <select className={inputClass} value={value("newRoomSharePeer")} onChange={(e) => setValue("newRoomSharePeer", e.target.value)} required>
+                <option value="">Seleccionar…</option>
+                {roomsForSiteExcept(value("newRoomSite")).map((room) => (
+                  <option key={room.id} value={room.id}>{asText(room.name)}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <Field label="Nombre" value={value("roomName")} onChange={(e) => setValue("roomName", e.target.value)} required />
           <Field label="Capacidad" type="number" min="1" value={value("roomCapacity")} onChange={(e) => setValue("roomCapacity", e.target.value)} required />
           <Field label="Duración de clase (minutos)" type="number" min="1" value={value("roomDuration") || "60"} onChange={(e) => setValue("roomDuration", e.target.value)} required />
@@ -517,7 +511,11 @@ export default function StudioAdminPage() {
                   <div className="font-medium text-slate-900">{asText(room.name)}{room.active === false ? " · inactivo" : ""}</div>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                     <span>sede: {siteName(room.site_id)}</span>
-                    <span>espacio: {spaceName(room.space_id)}</span>
+                    {room.shares_space_with_room_id ? (
+                      <span>comparte espacio con: {roomName(room.shares_space_with_room_id)}</span>
+                    ) : (
+                      <span>espacio propio</span>
+                    )}
                     <span>capacidad: {asText(room.capacity)}</span>
                     <span>duración: {asText(room.default_class_duration_minutes ?? 60)} min</span>
                   </div>
@@ -548,25 +546,39 @@ export default function StudioAdminPage() {
                       const nextSite = e.target.value;
                       setModalError(null);
                       setEditDraft((d) => {
-                        const stillValid = spacesForSite(nextSite, true).some((s) => s.id === d.space_id);
-                        return { ...d, site_id: nextSite, space_id: stillValid ? d.space_id : "" };
+                        const stillValid = roomsForSiteExcept(nextSite, editRoom.id).some((r) => r.id === d.share_room_id);
+                        return { ...d, site_id: nextSite, share_room_id: stillValid ? d.share_room_id : "", share_space: stillValid ? d.share_space : false };
                       });
                     }}
                   >
                     {list("sites").map((site) => <option key={site.id} value={site.id}>{asText(site.name)}</option>)}
                   </select>
                 </label>
-                <label className="space-y-1 text-sm"><span>Espacio físico (opcional)</span>
-                  <select className={inputClass} value={editDraft.space_id} onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, space_id: e.target.value })); }}>
-                    <option value="">Ninguno (puede dar en paralelo)</option>
-                    {spacesForSite(editDraft.site_id).map((space) => (
-                      <option key={space.id} value={space.id}>{asText(space.name)}</option>
-                    ))}
-                    {editDraft.space_id && !spacesForSite(editDraft.site_id).some((s) => s.id === editDraft.space_id) ? (
-                      <option value={editDraft.space_id}>{spaceName(editDraft.space_id)}</option>
-                    ) : null}
-                  </select>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editDraft.share_space}
+                    onChange={(e) => {
+                      setModalError(null);
+                      setEditDraft((d) => ({ ...d, share_space: e.target.checked, share_room_id: e.target.checked ? d.share_room_id : "" }));
+                    }}
+                  />
+                  Comparte espacio físico con otro salón
                 </label>
+                {editDraft.share_space && (
+                  <label className="space-y-1 text-sm"><span>Salón con el que comparte</span>
+                    <select
+                      className={inputClass}
+                      value={editDraft.share_room_id}
+                      onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, share_room_id: e.target.value })); }}
+                    >
+                      <option value="">Seleccionar…</option>
+                      {roomsForSiteExcept(editDraft.site_id, editRoom.id).map((room) => (
+                        <option key={room.id} value={room.id}>{asText(room.name)}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <Field label="Nombre" value={editDraft.name} onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, name: e.target.value })); }} />
                 <Field label="Capacidad" type="number" min="1" value={editDraft.capacity} onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, capacity: e.target.value })); }} />
                 <Field label="Duración de clase (minutos)" type="number" min="1" value={editDraft.duration} onChange={(e) => { setModalError(null); setEditDraft((d) => ({ ...d, duration: e.target.value })); }} />

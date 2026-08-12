@@ -59,16 +59,16 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 - `studio_room_hours`: **varias franjas** por día (0=domingo … 6=sábado); cada fila es un rango abierto; sin filas = cerrado.
 - API: `GET|PUT /rooms/{id}/hours` body `{ slots: [{ weekday, open_time, close_time }] }` (replace completo).
 - Series: la clase debe caber en **alguna** franja del día (half-open).
-- Mutex de **espacio físico** (no de sede): salones con el mismo `space_id` no pueden solapar franjas ni series. Sin espacio = pueden dar en paralelo en la misma sede.
+- Mutex de **espacio compartido** (no de sede): `shares_space_with_room_id` en el salón. Si Yoga apunta a Postural (y viceversa), no pueden solapar franjas ni series. Sin el flag = pueden dar en paralelo en la misma sede.
 - Tampoco se solapan franjas del mismo salón el mismo día.
 - UI Horarios: alta por día/rango + grilla; quitar filas; Guardar persiste todo.
 
-## Espacios físicos (009)
+## Salones que comparten espacio (009)
 
-- Tabla `studio_spaces` (sede + nombre). `studio_rooms.space_id` opcional.
-- Caso: sede con dos salas reales → salones **sin** espacio (o espacios distintos) → horarios en paralelo.
-- Caso: Yoga y Postural en el mismo piso → mismo espacio → mutex de horarios y de series.
-- UI: pestaña **Espacios**; en Salones, combo opcional “Espacio físico”.
+- Columna `studio_rooms.shares_space_with_room_id` (FK a otro salón de la misma sede). Par bidireccional.
+- UI: checkbox **Comparte espacio físico** + combo del otro salón. Sin pestaña extra.
+- Caso: dos salas reales en una sede → no marcar el checkbox.
+- Caso: Yoga y Postural en el mismo piso → marcar y elegir el otro.
 
 ## Portales
 

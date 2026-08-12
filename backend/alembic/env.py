@@ -29,7 +29,6 @@ from app.models import (  # noqa: F401
     StudioRoomHours,
     StudioSettings,
     StudioSite,
-    StudioSpace,
     StudioStudent,
     Teacher,
     User,
