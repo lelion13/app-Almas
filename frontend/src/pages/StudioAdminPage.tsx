@@ -177,8 +177,6 @@ export default function StudioAdminPage() {
       if (room.active === false) return false;
       return true;
     });
-  const roomsForSite = (siteId: string) =>
-    list("roomsAll").filter((room) => !siteId || String(room.site_id) === siteId);
   const activeRooms = list("roomsAll").filter((room) => room.active !== false);
   const activeSites = list("sites").filter((site) => site.active !== false);
   const activeActivities = list("activities").filter((activity) => activity.active !== false);
