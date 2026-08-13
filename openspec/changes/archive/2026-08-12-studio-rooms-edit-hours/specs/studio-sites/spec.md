@@ -13,7 +13,7 @@ Each salón MUST store `default_class_duration_minutes` (integer ≥ 1). Create 
 
 ### Requirement: Room edit modal
 
-On Estudio → Salones, each room MUST offer an **Editar** action that opens a modal to change: site (sede), name, capacity, default duration, and active flag, saved via PATCH.
+On Estudio → Salones, each room MUST offer an **Editar** action that opens a modal to change: site (sede), optional shared-space peer, name, capacity, default duration, and active flag, saved via PATCH. Validation errors for this save MUST be shown **inside the modal**.
 
 #### Scenario: Edit capacity and duration
 - **GIVEN** an existing room
@@ -25,13 +25,19 @@ On Estudio → Salones, each room MUST offer an **Editar** action that opens a m
 - **WHEN** admin attempts to change the room’s site_id
 - **THEN** the system MUST reject with validation error
 
+#### Scenario: Edit validation stays in modal
+- **GIVEN** the Editar modal is open
+- **WHEN** PATCH fails with `422`
+- **THEN** the error MUST appear inside the modal
+- **AND** the page banner behind the overlay MUST NOT be the only place showing that error
+
 ### Requirement: Room weekly open hours
 
 Each salón MUST support a weekly schedule of **zero or more open time ranges per weekday** (0–6, domingo…sábado). Each range MUST have open_time and close_time with close_time after open_time on the same calendar day (no overnight ranges in MVP). Ranges on the same weekday MUST NOT overlap (half-open). Empty schedule means the room is closed every day.
 
 On create, a room MUST start with **no ranges** until configured in **Horarios**.
 
-Admin MUST set the schedule via a **Horarios** modal: add day + range into a list (grid), remove rows, then save full replace via API.
+Admin MUST set the schedule via a **Horarios** modal: add day + range into a list (grid), remove rows, then save full replace via API. Validation errors for this save MUST be shown **inside the modal**.
 
 #### Scenario: Save two Monday ranges
 - **GIVEN** a room with empty schedule
@@ -44,9 +50,15 @@ Admin MUST set the schedule via a **Horarios** modal: add day + range into a lis
 - **WHEN** they save Horarios
 - **THEN** the response MUST be `422`
 
+#### Scenario: Hours validation stays in modal
+- **GIVEN** the Horarios modal is open
+- **WHEN** PUT hours fails with `422` (e.g. shared-space overlap)
+- **THEN** the error MUST appear inside the modal
+- **AND** the modal MUST remain open
+
 ### Requirement: Open hours exclusive among rooms that share physical space
 
-A room MAY optionally declare that it shares physical space with **one other room of the same site** (`shares_space_with_room_id`). The link is bidirectional. Rooms without this attribute MAY run in parallel in the same site.
+A room MAY optionally declare that it shares physical space with **one other room of the same site** (`shares_space_with_room_id`). The link is bidirectional. Rooms without this attribute MAY run in parallel in the same site. The admin UI MUST expose this as a checkbox plus peer room select on Salones create/edit. The system MUST NOT require a separate Espacios catalog or tab.
 
 When saving room weekly hours, the system MUST reject the schedule if any open weekday range overlaps the peer room’s open range on the same weekday (active rooms only, half-open intervals). Assigning the share MUST also be rejected if current hours or active series would overlap the peer.
 
@@ -91,7 +103,7 @@ When creating (or updating) a class series, the system MUST reject the request i
 
 ### Requirement: Salones CRUD
 
-Admin MUST be able to create, update, and soft-deactivate salones with: site, name, physical capacity, **default_class_duration_minutes**, and active flag. The Salones admin list MUST expose **Editar** and **Horarios** actions per room (labels and button styling as design).
+Admin MUST be able to create, update, and soft-deactivate salones with: site, name, physical capacity, **default_class_duration_minutes**, optional `shares_space_with_room_id`, and active flag. The Salones admin list MUST expose **Editar** and **Horarios** actions per room (labels and button styling as design).
 
 #### Scenario: Create room requires duration
 - **GIVEN** an admin
@@ -103,3 +115,5 @@ Admin MUST be able to create, update, and soft-deactivate salones with: site, na
 - Mass-cancel of existing series when hours shrink
 - Prefilling Series form from room defaults
 - Alumno/instructor editing rooms
+- A third catalog “Espacios” / `studio_spaces`
+- Sharing space among more than two rooms as a group

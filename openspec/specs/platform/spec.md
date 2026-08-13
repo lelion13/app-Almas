@@ -60,7 +60,7 @@ Explicitly out of product scope today:
 - Account Money CSV as primary Conciliación Consultar; bank withdrawals in that path
 - Feeding monthly closings from studio bookings / replacing SigueFit
 - Self-service password reset UI; public user registration API; refresh tokens
-- Studio: recepción role; auto email/SMS/WhatsApp; check-in; timed reschedule; plan freeze; mensual libre; MP pack checkout; AFIP; Google Calendar; Teachers↔Instructor FK; rich studio analytics
+- Studio: recepción role; auto email/SMS/WhatsApp; check-in; timed reschedule; plan freeze; mensual libre; MP pack checkout; AFIP; Google Calendar; Teachers↔Instructor FK; rich studio analytics; Espacios catalog (`studio_spaces`); overnight room hours; 3+ rooms sharing one physical space
 
 #### Scenario: Studio coexists with closings
 - **GIVEN** the platform after studio-ops-mvp

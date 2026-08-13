@@ -130,6 +130,7 @@ class ActivityCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     level: str = Field(default="inicial", max_length=32)
     default_duration_minutes: int = Field(default=60, ge=1)
+    room_ids: list[UUID] = Field(min_length=1)
     active: bool = True
 
 
@@ -137,7 +138,14 @@ class ActivityPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     level: str | None = Field(default=None, max_length=32)
     default_duration_minutes: int | None = Field(default=None, ge=1)
+    room_ids: list[UUID] | None = None
     active: bool | None = None
+
+    @model_validator(mode="after")
+    def room_ids_non_empty_when_set(self):
+        if self.room_ids is not None and len(self.room_ids) < 1:
+            raise ValueError("room_ids must contain at least one room")
+        return self
 
 
 class ActivityResponse(ORMModel):
@@ -145,6 +153,7 @@ class ActivityResponse(ORMModel):
     name: str
     level: str
     default_duration_minutes: int
+    room_ids: list[UUID]
     active: bool
     created_at: datetime
 

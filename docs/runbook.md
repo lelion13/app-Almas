@@ -30,16 +30,16 @@
 
 ## Estudio (Studio Ops MVP)
 - Coexiste con cierres SigueFit: no los reemplaza.
-- Migración: `alembic upgrade head` (revisión **`009`** salones que comparten espacio físico).
+- Migración: `alembic upgrade head` (revisión **`011`**: `studio_activity_rooms`; **`010`** asegura `shares_space_with_room_id`).
 - API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
 - UI:
-  - Admin → **Estudio** (`/studio`): sedes; salones (crear + **Editar** + **Horarios**; opcional “comparte espacio” con otro salón); grilla, alumnos, paquetes, feriados, auditoría.
+  - Admin → **Estudio** (`/studio`): sedes; salones (crear + **Editar** + **Horarios**; opcional “comparte espacio”); actividades (salones asociados + **Editar** + **Eliminar** soft); grilla, alumnos, paquetes, feriados, auditoría.
   - Instructor → **Mi agenda** (`/instructor`): sesiones + asistencia.
   - Alumno → **Mis clases** (`/mis-clases`): packs, reservar/cancelar, lista de espera (confirmación manual).
 - Packs de N clases (sin mensual libre); alcance `all_sedes` o `one_sede` al asignar.
-- Specs: `openspec/specs/studio-*.md` (+ `auth`, `platform`).
+- Specs: `openspec/specs/studio-*.md` (+ `auth`, `platform`, `deployment`).
 - Lecciones: `docs/studio-ops-lessons.md`
-- Archive: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`
+- Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`
 
 ## Auth Troubleshooting
 - `401 Unauthorized`: verify JWT secret, token expiry, and auth header format.

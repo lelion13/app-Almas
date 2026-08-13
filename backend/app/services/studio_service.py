@@ -16,10 +16,12 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password
 from app.models.studio import (
     Attendance, Booking, ClassSeries, ClassSession, FixedEnrollment, PackProduct,
-    StudentPack, StudioActivity, StudioAuditLog, StudioHoliday, StudioInstructor,
-    StudioRoom, StudioRoomHours, StudioSettings, StudioSite, StudioStudent, WaitlistEntry,
+    StudentPack, StudioActivity, StudioActivityRoom, StudioAuditLog, StudioHoliday,
+    StudioInstructor, StudioRoom, StudioRoomHours, StudioSettings, StudioSite,
+    StudioStudent, WaitlistEntry,
 )
 from app.models.user import User
+from app.schemas.studio import ActivityResponse
 from app.services.studio_audit import write_audit
 
 
@@ -351,8 +353,107 @@ def replace_room_hours(db: Session, room_id: UUID, slots: list[dict[str, Any]]) 
     return get_room_hours(db, room_id)
 
 
-def create_activity(db: Session, values: dict[str, Any]) -> StudioActivity:
-    return _save(db, StudioActivity(**values))
+def get_activity_room_ids(db: Session, activity_id: UUID) -> list[UUID]:
+    rows = db.scalars(
+        select(StudioActivityRoom.room_id).where(StudioActivityRoom.activity_id == activity_id)
+    ).all()
+    return list(rows)
+
+
+def activity_to_response(db: Session, activity: StudioActivity) -> ActivityResponse:
+    return ActivityResponse(
+        id=activity.id,
+        name=activity.name,
+        level=activity.level,
+        default_duration_minutes=activity.default_duration_minutes,
+        room_ids=get_activity_room_ids(db, activity.id),
+        active=activity.active,
+        created_at=activity.created_at,
+    )
+
+
+def list_activity_responses(db: Session) -> list[ActivityResponse]:
+    activities = db.scalars(select(StudioActivity)).all()
+    return [activity_to_response(db, row) for row in activities]
+
+
+def _normalize_room_ids(room_ids: list[UUID]) -> list[UUID]:
+    seen: set[UUID] = set()
+    ordered: list[UUID] = []
+    for room_id in room_ids:
+        if room_id not in seen:
+            seen.add(room_id)
+            ordered.append(room_id)
+    return ordered
+
+
+def replace_activity_rooms(db: Session, activity_id: UUID, room_ids: list[UUID]) -> None:
+    """Full replace of activity↔room links. Rejects empty set and unlinking rooms with active series."""
+    room_ids = _normalize_room_ids(room_ids)
+    if not room_ids:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Activity must be linked to at least one room")
+    current = set(get_activity_room_ids(db, activity_id))
+    for room_id in room_ids:
+        room = _get(db, StudioRoom, room_id, "Room")
+        # New links must be active; already-linked inactive rooms may remain until unlinked.
+        if not room.active and room_id not in current:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Room '{room.name}' is inactive")
+    next_set = set(room_ids)
+    removed = current - next_set
+    for room_id in removed:
+        has_series = db.scalar(
+            select(func.count(ClassSeries.id)).where(
+                ClassSeries.activity_id == activity_id,
+                ClassSeries.room_id == room_id,
+                ClassSeries.active.is_(True),
+            )
+        )
+        if has_series:
+            room = db.get(StudioRoom, room_id)
+            name = room.name if room else str(room_id)
+            _error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                f"No se puede desvincular el salón '{name}': hay series activas de esta actividad",
+            )
+    for row in db.scalars(
+        select(StudioActivityRoom).where(StudioActivityRoom.activity_id == activity_id)
+    ).all():
+        db.delete(row)
+    for room_id in room_ids:
+        db.add(StudioActivityRoom(activity_id=activity_id, room_id=room_id))
+
+
+def assert_activity_allows_room(db: Session, activity_id: UUID, room_id: UUID) -> StudioActivity:
+    activity = _get(db, StudioActivity, activity_id, "Activity")
+    if not activity.active:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Activity is inactive")
+    linked = get_activity_room_ids(db, activity_id)
+    if room_id not in linked:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Room is not linked to this activity")
+    return activity
+
+
+def create_activity(db: Session, values: dict[str, Any]) -> ActivityResponse:
+    room_ids = values.pop("room_ids")
+    activity = StudioActivity(**values)
+    db.add(activity)
+    db.flush()
+    replace_activity_rooms(db, activity.id, room_ids)
+    db.commit()
+    db.refresh(activity)
+    return activity_to_response(db, activity)
+
+
+def update_activity(db: Session, activity_id: UUID, values: dict[str, Any]) -> ActivityResponse:
+    activity = _get(db, StudioActivity, activity_id, "Activity")
+    room_ids = values.pop("room_ids", None)
+    for key, value in values.items():
+        setattr(activity, key, value)
+    if room_ids is not None:
+        replace_activity_rooms(db, activity.id, room_ids)
+    db.commit()
+    db.refresh(activity)
+    return activity_to_response(db, activity)
 
 
 def _create_profile(db: Session, model: type[Any], role: str, values: dict[str, Any]) -> Any:
@@ -397,7 +498,7 @@ def create_series(db: Session, values: dict[str, Any]) -> ClassSeries:
         _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Room does not belong to selected site")
     if values["capacity"] > room.capacity:
         _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Class capacity exceeds room capacity")
-    _get(db, StudioActivity, values["activity_id"], "Activity")
+    assert_activity_allows_room(db, values["activity_id"], values["room_id"])
     _get(db, StudioInstructor, values["instructor_id"], "Instructor")
     assert_series_fits_room_hours(
         db, values["room_id"], values["weekday"], values["start_time"], values["duration_minutes"]

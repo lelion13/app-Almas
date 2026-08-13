@@ -1,7 +1,7 @@
-# Studio Ops MVP — lecciones y decisiones de implementación
+# Studio Ops — lecciones y decisiones de implementación
 
-Specs: `openspec/specs/studio-*.md`, `auth`, `platform`.  
-Archive: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`.
+Specs (fuente de verdad): `openspec/specs/studio-*.md`, `auth`, `platform`, `deployment`.  
+Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`.
 
 ## Convivencia de producto
 
@@ -63,12 +63,21 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 - Tampoco se solapan franjas del mismo salón el mismo día.
 - UI Horarios: alta por día/rango + grilla; quitar filas; Guardar persiste todo.
 
-## Salones que comparten espacio (009)
+## Salones que comparten espacio (009–010)
 
 - Columna `studio_rooms.shares_space_with_room_id` (FK a otro salón de la misma sede). Par bidireccional.
 - UI: checkbox **Comparte espacio físico** + combo del otro salón. Sin pestaña extra.
 - Caso: dos salas reales en una sede → no marcar el checkbox.
 - Caso: Yoga y Postural en el mismo piso → marcar y elegir el otro.
+- `010` es idempotente: si `009` se reescribió y Alembic no volvió a correr, igual crea la columna y limpia leftover `space_id` / `studio_spaces`.
+
+## Actividades ↔ salones (011)
+
+- Tabla `studio_activity_rooms` (N:N). Create/PATCH exige ≥1 `room_ids`.
+- UI Actividades: checkboxes por sede; lista con **Editar** (teal) + **Eliminar** (soft `active=false`).
+- Series: el salón debe estar en los de la actividad; picker = sede ∩ salones de la actividad.
+- No se desvincula un salón si hay serie activa de esa actividad ahí.
+- Actividades existentes tras `011` quedan sin salones hasta Editar (sin backfill).
 
 ## Portales
 
@@ -88,17 +97,28 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 
 1. Push `main` → GHCR workflow (`ghcr.io/lelion13/app-almas-{backend,frontend}:main` + SHA).
 2. En VPS, **siempre** `docker compose … pull` + `up -d` (el update de Hostinger API puede marcar success sin recrear contenedores si el tag `:main` no fuerza pull).
-3. Backend entrypoint: `alembic upgrade head` → **`005`**.
-4. Verificar: `/health` 200; `SELECT version_num FROM alembic_version;` → `005`.
+3. Backend entrypoint: `alembic upgrade head` → **`011`**.
+4. Verificar: `/health` 200; `SELECT version_num FROM alembic_version;` → `011`.
+5. Si prod quedó stamped `009` **sin** columna `shares_space_with_room_id` (revisión reescrita): preferí imagen con `010`/`011` + `alembic upgrade head`. Si hace falta desbloquear a mano:
+
+```sql
+ALTER TABLE studio_rooms
+  ADD COLUMN IF NOT EXISTS shares_space_with_room_id UUID REFERENCES studio_rooms(id);
+CREATE INDEX IF NOT EXISTS ix_studio_rooms_shares_space_with_room_id
+  ON studio_rooms (shares_space_with_room_id);
+-- leftover del diseño Espacios abandonado (opcional hasta que corra 010):
+-- ALTER TABLE studio_rooms DROP COLUMN IF EXISTS space_id CASCADE;
+-- DROP TABLE IF EXISTS studio_spaces CASCADE;
+```
 
 No hace falta re-dump de DB local solo por Studio: la migración aplica tablas nuevas sobre datos existentes.
 
 ## Fuera de alcance (recordatorio)
 
-Recepción; notificaciones externas; check-in; reprogramación con topes; freeze de plan; mensual libre; checkout MP de packs; AFIP; GCal; vínculo Instructors↔Teachers; reportes ricos de Estudio.
+Recepción; notificaciones externas; check-in; reprogramación con topes; freeze de plan; mensual libre; checkout MP de packs; AFIP; GCal; vínculo Instructors↔Teachers; reportes ricos de Estudio; catálogo Espacios; horarios overnight; más de dos salones en un mismo espacio físico.
 
 ## API surface (resumen)
 
-- Admin: sites, rooms, activities, instructors, students, series, expand-sessions, sessions + mass-cancel, holidays, pack-products, student-packs, transfer-credits, fixed-enrollments, bookings cancel, waitlist, settings, audit.
+- Admin: sites, rooms (+ `GET|PUT /rooms/{id}/hours` `{ slots }`, `shares_space_with_room_id`), activities (+ `room_ids` N:N), instructors, students, series, expand-sessions, sessions + mass-cancel, holidays, pack-products, student-packs, transfer-credits, fixed-enrollments, bookings cancel, waitlist, settings, audit.
 - Instructor: sessions (from today), session bookings, attendance.
 - Alumno: me/packs, me/sessions, me/book, me/bookings, me/cancel, me/waitlist, me/waitlist/{id}/confirm.

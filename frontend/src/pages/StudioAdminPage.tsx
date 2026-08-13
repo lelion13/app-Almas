@@ -82,6 +82,11 @@ export default function StudioAdminPage() {
   const [editDraft, setEditDraft] = useState({
     site_id: "", share_space: false, share_room_id: "", name: "", capacity: "8", duration: "60", active: true,
   });
+  const [editActivity, setEditActivity] = useState<Item | null>(null);
+  const [editActivityDraft, setEditActivityDraft] = useState({
+    name: "", level: "inicial", duration: "60", active: true, room_ids: [] as string[],
+  });
+  const [createRoomIds, setCreateRoomIds] = useState<string[]>([]);
 
   const value = (key: string) => values[key] ?? "";
   const setValue = (key: string, next: string) => setValues((current) => ({ ...current, [key]: next }));
@@ -143,6 +148,7 @@ export default function StudioAdminPage() {
       await loadTab(reload);
       if (path.includes("/studio/rooms")) await load("roomsAll", "/api/v1/studio/rooms");
       if (path.includes("/studio/sites")) await load("sites", "/api/v1/studio/sites");
+      if (path.includes("/studio/activities")) await load("activities", "/api/v1/studio/activities");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo guardar.");
     } finally { setBusy(false); }
@@ -173,12 +179,179 @@ export default function StudioAdminPage() {
     });
   const roomsForSite = (siteId: string) =>
     list("roomsAll").filter((room) => !siteId || String(room.site_id) === siteId);
+  const activeRooms = list("roomsAll").filter((room) => room.active !== false);
   const activeSites = list("sites").filter((site) => site.active !== false);
+  const activeActivities = list("activities").filter((activity) => activity.active !== false);
+  const roomsForSeries = () => {
+    const siteId = value("seriesSite");
+    const activityId = value("seriesActivity");
+    const activity = list("activities").find((item) => item.id === activityId);
+    const linked = new Set(
+      Array.isArray(activity?.room_ids) ? (activity.room_ids as string[]).map(String) : [],
+    );
+    return activeRooms.filter((room) => {
+      if (siteId && String(room.site_id) !== siteId) return false;
+      if (activityId && !linked.has(room.id)) return false;
+      return true;
+    });
+  };
+  const activityRoomLabels = (activity: Item) => {
+    const ids = Array.isArray(activity.room_ids) ? (activity.room_ids as string[]) : [];
+    if (!ids.length) return "sin salones (asigná en Editar)";
+    return ids.map((rid) => {
+      const room = list("roomsAll").find((item) => item.id === rid);
+      if (!room) return asText(rid);
+      return `${asText(room.name)} (${siteName(room.site_id)})`;
+    }).join(" · ");
+  };
+  const toggleRoomId = (ids: string[], roomId: string) => (
+    ids.includes(roomId) ? ids.filter((id) => id !== roomId) : [...ids, roomId]
+  );
   const selects = {
-    site: activeSites, room: list("roomsAll"), activity: list("activities"),
+    site: activeSites, room: list("roomsAll"), activity: activeActivities,
     instructor: list("instructors"), student: list("students"), product: list("products"), pack: list("packs"),
   };
   const allSites = list("sites");
+
+  function closeEditActivity() {
+    setEditActivity(null);
+    setModalError(null);
+  }
+
+  function openEditActivity(activity: Item) {
+    setEditActivity(activity);
+    setEditActivityDraft({
+      name: String(activity.name ?? ""),
+      level: String(activity.level ?? "inicial"),
+      duration: String(activity.default_duration_minutes ?? "60"),
+      active: activity.active !== false,
+      room_ids: Array.isArray(activity.room_ids) ? (activity.room_ids as string[]).map(String) : [],
+    });
+    setError(null);
+    setModalError(null);
+  }
+
+  async function saveEditActivity() {
+    if (!editActivity) return;
+    if (editActivityDraft.room_ids.length < 1) {
+      setModalError("Elegí al menos un salón.");
+      return;
+    }
+    setBusy(true); setModalError(null); setNotice(null);
+    try {
+      await apiFetch(`/api/v1/studio/activities/${editActivity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editActivityDraft.name.trim(),
+          level: editActivityDraft.level.trim() || "inicial",
+          default_duration_minutes: Number(editActivityDraft.duration),
+          active: editActivityDraft.active,
+          room_ids: editActivityDraft.room_ids,
+        }),
+      });
+      setNotice("Actividad actualizada.");
+      closeEditActivity();
+      await load("activities", "/api/v1/studio/activities");
+      if (tab === "activities") await loadTab("activities");
+    } catch (e) {
+      setModalError(e instanceof ApiError ? e.message : "No se pudo actualizar la actividad.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function softDeleteActivity(activity: Item) {
+    if (!window.confirm(`¿Desactivar la actividad "${asText(activity.name)}"? El historial se mantiene.`)) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await apiFetch(`/api/v1/studio/activities/${activity.id}`, { method: "DELETE" });
+      setNotice("Actividad desactivada.");
+      await load("activities", "/api/v1/studio/activities");
+      if (tab === "activities") await loadTab("activities");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo desactivar la actividad.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createActivitySubmit(e: FormEvent) {
+    e.preventDefault();
+    if (createRoomIds.length < 1) {
+      setError("Elegí al menos un salón para la actividad.");
+      return;
+    }
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await apiFetch("/api/v1/studio/activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: value("activityName").trim(),
+          level: value("activityLevel") || "inicial",
+          default_duration_minutes: Number(value("activityDuration") || 60),
+          room_ids: createRoomIds,
+        }),
+      });
+      setNotice("Actividad creada.");
+      setCreateRoomIds([]);
+      setValue("activityName", "");
+      setValue("activityLevel", "");
+      setValue("activityDuration", "");
+      await load("activities", "/api/v1/studio/activities");
+      if (tab === "activities") await loadTab("activities");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo crear la actividad.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function RoomPickers({
+    selected,
+    onChange,
+  }: {
+    selected: string[];
+    onChange: (next: string[]) => void;
+  }) {
+    const roomsForPicker = list("roomsAll").filter(
+      (room) => room.active !== false || selected.includes(room.id),
+    );
+    const bySite = allSites
+      .map((site) => ({
+        site,
+        rooms: roomsForPicker.filter((room) => String(room.site_id) === site.id),
+      }))
+      .filter((group) => group.rooms.length > 0);
+    if (!bySite.length) {
+      return <p className="text-sm text-amber-800">No hay salones activos. Creá uno en <strong>Salones</strong>.</p>;
+    }
+    return (
+      <div className="space-y-3 sm:col-span-2">
+        <p className="text-sm font-medium text-slate-700">Salones (uno o más)</p>
+        {bySite.map(({ site, rooms }) => (
+          <div key={site.id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{asText(site.name)}</p>
+            <div className="flex flex-col gap-2">
+              {rooms.map((room) => (
+                <label key={room.id} className="flex items-center gap-2 text-sm text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(room.id)}
+                    onChange={() => onChange(toggleRoomId(selected, room.id))}
+                  />
+                  {asText(room.name)}
+                  {room.active === false ? <span className="text-xs text-amber-700">(inactivo)</span> : null}
+                  <span className="text-xs text-slate-500">cap. {asText(room.capacity)}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   async function patchSite(siteId: string, body: Record<string, unknown>, success: string) {
     setBusy(true); setError(null); setNotice(null);
@@ -695,8 +868,63 @@ export default function StudioAdminPage() {
       </section>}
 
       {tab === "activities" && <section className="space-y-4">
-        {form((e) => { e.preventDefault(); void submit("/api/v1/studio/activities", { name: value("activityName"), level: value("activityLevel") || "inicial", default_duration_minutes: Number(value("activityDuration") || 60) }, "Actividad creada."); }, <><Field label="Nombre" value={value("activityName")} onChange={(e) => setValue("activityName", e.target.value)} required /><Field label="Nivel" value={value("activityLevel")} onChange={(e) => setValue("activityLevel", e.target.value)} placeholder="inicial" /><Field label="Duración (minutos)" type="number" min="1" value={value("activityDuration")} onChange={(e) => setValue("activityDuration", e.target.value)} required /></>)}
-        <List items={list("activities")} fields={["name", "level", "default_duration_minutes", "active"]} />
+        <form onSubmit={(e) => void createActivitySubmit(e)} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+          <Field label="Nombre" value={value("activityName")} onChange={(e) => setValue("activityName", e.target.value)} required />
+          <Field label="Nivel" value={value("activityLevel")} onChange={(e) => setValue("activityLevel", e.target.value)} placeholder="inicial" />
+          <Field label="Duración (minutos)" type="number" min="1" value={value("activityDuration")} onChange={(e) => setValue("activityDuration", e.target.value)} required />
+          <RoomPickers selected={createRoomIds} onChange={setCreateRoomIds} />
+          <div className="sm:col-span-2"><button type="submit" className={buttonClass} disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button></div>
+        </form>
+        {list("activities").length === 0 ? (
+          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">No hay actividades.</p>
+        ) : (
+          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+            {list("activities").map((activity) => (
+              <li key={activity.id} className="flex flex-col gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-medium text-slate-900">{asText(activity.name)}{activity.active === false ? " · inactiva" : ""}</div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>nivel: {asText(activity.level)}</span>
+                    <span>duración: {asText(activity.default_duration_minutes)} min</span>
+                    <span>salones: {activityRoomLabels(activity)}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700" onClick={() => openEditActivity(activity)}>Editar</button>
+                  {activity.active !== false && (
+                    <button type="button" className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => void softDeleteActivity(activity)}>Eliminar</button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {editActivity && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Editar actividad">
+            <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-lg">
+              <h3 className="text-lg font-semibold text-slate-900">Editar actividad</h3>
+              {modalError && (
+                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+                  {modalError}
+                </p>
+              )}
+              <div className="mt-3 grid gap-3">
+                <Field label="Nombre" value={editActivityDraft.name} onChange={(e) => { setModalError(null); setEditActivityDraft((d) => ({ ...d, name: e.target.value })); }} />
+                <Field label="Nivel" value={editActivityDraft.level} onChange={(e) => { setModalError(null); setEditActivityDraft((d) => ({ ...d, level: e.target.value })); }} />
+                <Field label="Duración (minutos)" type="number" min="1" value={editActivityDraft.duration} onChange={(e) => { setModalError(null); setEditActivityDraft((d) => ({ ...d, duration: e.target.value })); }} />
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editActivityDraft.active} onChange={(e) => { setModalError(null); setEditActivityDraft((d) => ({ ...d, active: e.target.checked })); }} /> Activa</label>
+                <RoomPickers
+                  selected={editActivityDraft.room_ids}
+                  onChange={(next) => { setModalError(null); setEditActivityDraft((d) => ({ ...d, room_ids: next })); }}
+                />
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={closeEditActivity}>Cancelar</button>
+                <button type="button" className={buttonClass} disabled={busy} onClick={() => void saveEditActivity()}>{busy ? "Guardando…" : "Guardar"}</button>
+              </div>
+            </div>
+          </div>
+        )}
       </section>}
 
       {tab === "instructors" && <ProfileSection title="Instructor" endpoint="instructors" fields={["full_name", "email", "login_email", "password"]} items={list("instructors")} values={values} setValue={setValue} submit={submit} form={form} />}
@@ -718,23 +946,53 @@ export default function StudioAdminPage() {
             label="Sede"
             field="seriesSite"
             items={selects.site}
-            onChangeExtra={(next) => {
+            onChangeExtra={(nextSite) => {
+              const activity = list("activities").find((item) => item.id === value("seriesActivity"));
+              const linked = new Set(
+                Array.isArray(activity?.room_ids) ? (activity.room_ids as string[]).map(String) : [],
+              );
               const currentRoom = list("roomsAll").find((room) => room.id === value("seriesRoom"));
-              if (currentRoom && String(currentRoom.site_id) !== next) setValue("seriesRoom", "");
+              if (!currentRoom) return;
+              if (String(currentRoom.site_id) !== nextSite) {
+                setValue("seriesRoom", "");
+                return;
+              }
+              if (value("seriesActivity") && !linked.has(currentRoom.id)) setValue("seriesRoom", "");
+            }}
+          />
+          <Select
+            label="Actividad"
+            field="seriesActivity"
+            items={selects.activity}
+            onChangeExtra={(nextActivityId) => {
+              const activity = list("activities").find((item) => item.id === nextActivityId);
+              const linked = new Set(
+                Array.isArray(activity?.room_ids) ? (activity.room_ids as string[]).map(String) : [],
+              );
+              const siteId = value("seriesSite");
+              const allowed = new Set(
+                activeRooms
+                  .filter((room) => {
+                    if (siteId && String(room.site_id) !== siteId) return false;
+                    if (nextActivityId && !linked.has(room.id)) return false;
+                    return true;
+                  })
+                  .map((room) => room.id),
+              );
+              if (value("seriesRoom") && !allowed.has(value("seriesRoom"))) setValue("seriesRoom", "");
             }}
           />
           <Select
             label="Salón"
             field="seriesRoom"
-            items={roomsForSite(value("seriesSite"))}
-            required={Boolean(value("seriesSite"))}
+            items={roomsForSeries()}
+            required={Boolean(value("seriesSite") && value("seriesActivity"))}
           />
-          {value("seriesSite") && roomsForSite(value("seriesSite")).length === 0 && (
+          {value("seriesSite") && value("seriesActivity") && roomsForSeries().length === 0 && (
             <p className="sm:col-span-2 text-sm text-amber-800">
-              No hay salones para esta sede. Creá uno en la pestaña <strong>Salones</strong> y volvé acá.
+              No hay salones compatibles (sede ∩ salones de la actividad). Asigná salones en <strong>Actividades</strong> o elegí otra combinación.
             </p>
           )}
-          <Select label="Actividad" field="seriesActivity" items={selects.activity} />
           <Select label="Instructor" field="seriesInstructor" items={selects.instructor} />
           <Field label="Día (0 domingo · 6 sábado)" type="number" min="0" max="6" value={value("seriesWeekday")} onChange={(e) => setValue("seriesWeekday", e.target.value)} required />
           <Field label="Hora" type="time" step="1" value={value("seriesTime")} onChange={(e) => setValue("seriesTime", e.target.value)} required />

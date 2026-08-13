@@ -94,7 +94,7 @@ def put_room_hours(room_id: UUID, body: RoomHoursReplace, _admin: AdminOnly, db:
 
 @router.get("/activities", response_model=list[ActivityResponse])
 def list_activities(_admin: AdminOnly, db: Session = Depends(get_db)):
-    return _list(db, StudioActivity)
+    return service.list_activity_responses(db)
 
 
 @router.post("/activities", response_model=ActivityResponse, status_code=status.HTTP_201_CREATED)
@@ -104,7 +104,7 @@ def create_activity(body: ActivityCreate, _admin: AdminOnly, db: Session = Depen
 
 @router.patch("/activities/{activity_id}", response_model=ActivityResponse)
 def patch_activity(activity_id: UUID, body: ActivityPatch, _admin: AdminOnly, db: Session = Depends(get_db)):
-    return service.update_entity(db, service._get(db, StudioActivity, activity_id, "Activity"), body.model_dump(exclude_unset=True))
+    return service.update_activity(db, activity_id, body.model_dump(exclude_unset=True))
 
 
 @router.delete("/activities/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -24,6 +24,17 @@ Scope UI “solo Salones” + hard validate series → el backend valida al **PO
 ## Open (implementation defaults, low risk)
 - Changing sede de un salón con series históricas: **permitido** en edit; series siguen con su `room_id`/`site_id` actuales (inconsistencia posible si se mueve sala de sede) — **recomendación:** al cambiar sede, service 422 if room has active series OR allow but keep series site_id as historically stored on series. Series has own `site_id` field — room site change could desync. Spec: **if room has active series, moving to another site is rejected**.
 
+## Follow-up locks (2026-08-11 / 2026-08-12)
+
+8. **Mutex de horarios:** no es por sede. Solo si el salón declara que comparte espacio con **otro salón de la misma sede**.
+9. **Varias franjas el mismo día** (horario cortado). Modal: selector de día + rango + Agregar; grilla abajo.
+10. **Errores de validación de Horarios/Editar** en el modal, no en el banner de la página.
+11. **No** hay entidad/pestaña Espacios. `009` reescrita; prod puede quedar stamped `009` con `space_id` → **`010`** idempotente.
+
+## Tension resolved
+Scope UI “solo Salones” + hard validate series → el backend valida al **POST/PATCH series**; la UI de Series no cambia más allá del error 422 legible.
+Shared physical space is a **room attribute** (peer FK), not a third catalog layer.
+
 ## Risks
 - Salón “cerrado” (sin días) bloquea cualquier serie hasta configurar horarios — by design.
 - Timezone: store times as local wall-clock `America/Argentina/Buenos_Aires` (same as series).

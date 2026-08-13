@@ -1,0 +1,15 @@
+change: studio-rooms-edit-hours
+status: archived
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: done
+  archive: done
+updated: 2026-08-12
+notes: |
+  Archived 2026-08-12. Alembic head 010. Share-space is room FK (no Espacios tab).
+  Prod 009 stamp may still have leftover space_id until 010 runs.

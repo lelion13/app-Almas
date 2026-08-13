@@ -22,6 +22,7 @@ from app.models import (  # noqa: F401
     PackProduct,
     StudentPack,
     StudioActivity,
+    StudioActivityRoom,
     StudioAuditLog,
     StudioHoliday,
     StudioInstructor,

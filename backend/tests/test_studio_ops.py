@@ -1,7 +1,9 @@
 from datetime import date, timedelta, time
 from uuid import uuid4
 
-from app.schemas.studio import SiteCreate, SitePatch, _normalize_maps_url
+from pydantic import ValidationError
+
+from app.schemas.studio import ActivityCreate, ActivityPatch, SiteCreate, SitePatch, _normalize_maps_url
 from app.models.studio import StudentPack
 from app.services.studio_service import (
     open_time_ranges_overlap,
@@ -97,3 +99,21 @@ def test_open_time_ranges_overlap_half_open():
     assert open_time_ranges_overlap(time(10, 0), time(12, 0), time(9, 0), time(11, 0))
     # Full containment.
     assert open_time_ranges_overlap(time(9, 0), time(18, 0), time(10, 0), time(11, 0))
+
+
+def test_activity_create_requires_at_least_one_room():
+    room_a = uuid4()
+    room_b = uuid4()
+    ok = ActivityCreate(name="Yoga", room_ids=[room_a, room_b])
+    assert ok.room_ids == [room_a, room_b]
+    with pytest.raises(ValidationError):
+        ActivityCreate(name="Yoga", room_ids=[])
+
+
+def test_activity_patch_rejects_empty_room_ids_when_set():
+    patch = ActivityPatch(name="Pilates")
+    assert patch.room_ids is None
+    ok = ActivityPatch(room_ids=[uuid4()])
+    assert len(ok.room_ids) == 1
+    with pytest.raises(ValidationError):
+        ActivityPatch(room_ids=[])

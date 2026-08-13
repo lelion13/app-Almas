@@ -6,8 +6,8 @@ Fast navigation for app-Almas. **Behavioral source of truth:** `openspec/specs/*
 ## SDD (OpenSpec)
 - Config: `openspec/config.yaml`
 - Domains: `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `platform`, `mercado-pago`, `studio-sites`, `studio-scheduling`, `studio-students`, `studio-packs`, `studio-audit`
-- Active changes: `openspec/changes/{name}/` → archive merges into main specs
-- Studio lessons: `docs/studio-ops-lessons.md` (archive `2026-08-10-studio-ops-mvp`)
+- Active changes: `openspec/changes/{name}/` (none as of 2026-08-12) → archive merges into main specs
+- Studio lessons: `docs/studio-ops-lessons.md` (archives `2026-08-10-studio-ops-mvp`, `2026-08-11-studio-sites-edit-maps`, `2026-08-12-studio-rooms-edit-hours`)
 - MP Conciliación lessons: `docs/mp-conciliation-lessons.md`
 - Skill registry: `.atl/skill-registry.md`
 
@@ -22,7 +22,7 @@ Fast navigation for app-Almas. **Behavioral source of truth:** `openspec/specs/*
 - `backend/app/repositories/` database access logic.
 - `backend/app/core/` config, security, dependencies.
 - `backend/tests/` API and service tests.
-- `docs/` runbooks (`vps-deploy.md`, `runbook.md`, `mp-conciliation-lessons.md`, `monthly-closings-spec.md` Excel detail).
+- `docs/` runbooks (`vps-deploy.md`, `runbook.md`, `mp-conciliation-lessons.md`, `studio-ops-lessons.md`, `monthly-closings-spec.md` Excel detail).
 
 ## Common Tasks
 - Add a protected endpoint: `backend/app/api/` + auth dependency + `schemas/` + update OpenSpec domain.

@@ -74,6 +74,19 @@ class StudioActivity(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class StudioActivityRoom(Base):
+    """Which rooms an activity may be scheduled in (any sites)."""
+
+    __tablename__ = "studio_activity_rooms"
+    __table_args__ = (UniqueConstraint("activity_id", "room_id", name="uq_studio_activity_room"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    activity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_activities.id"), nullable=False
+    )
+    room_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_rooms.id"), nullable=False)
+
+
 class StudioInstructor(Base):
     __tablename__ = "studio_instructors"
 
