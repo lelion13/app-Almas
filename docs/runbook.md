@@ -30,7 +30,7 @@
 
 ## Estudio (Studio Ops MVP)
 - Coexiste con cierres SigueFit: no los reemplaza.
-- Migración: `alembic upgrade head` (revisión **`011`**: `studio_activity_rooms`; **`010`** asegura `shares_space_with_room_id`).
+- Migración: `alembic upgrade head` (revisión **`012`**: `system_backup_config`/`system_backup_logs`; **`011`**: `studio_activity_rooms`; **`010`** asegura `shares_space_with_room_id`).
 - API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
 - UI:
   - Admin → **Estudio** (`/studio`): sedes; salones (crear + **Editar** + **Horarios**; opcional “comparte espacio”); actividades (salones asociados + **Editar** + **Eliminar** soft); grilla, alumnos, paquetes, feriados, auditoría.
@@ -39,7 +39,16 @@
 - Packs de N clases (sin mensual libre); alcance `all_sedes` o `one_sede` al asignar.
 - Specs: `openspec/specs/studio-*.md` (+ `auth`, `platform`, `deployment`).
 - Lecciones: `docs/studio-ops-lessons.md`
-- Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`
+- Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`
+
+## Backups de Base de Datos (S3 / Cloudflare R2)
+- Menú admin **Configuración** (`/configuracion`).
+- Backups binarios comprimidos (`pg_dump -Fc`) con subida a almacenamiento compatible S3.
+- Ejecución manual inmediata con feedback en tiempo real.
+- Planificador interno (AsyncIOScheduler) para backups automáticos (diario o semanal a hora configurable).
+- Rotación y retención configurable (conserva los últimos N backups en el bucket).
+- Historial de ejecuciones con fecha, tamaño, duración, estado y clave S3.
+
 
 ## Auth Troubleshooting
 - `401 Unauthorized`: verify JWT secret, token expiry, and auth header format.

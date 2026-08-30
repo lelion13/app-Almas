@@ -47,9 +47,9 @@ Antes del dump, en la DB local:
 SELECT version_num FROM alembic_version;
 ```
 
-El código de producto llega hasta **`011`** (`005` studio ops + `006` maps_url + `007`–`010` salones/horarios/espacio compartido + `011` activity↔rooms).
+El código de producto llega hasta **`012`** (`005` studio ops + `006` maps_url + `007`–`010` salones/horarios/espacio compartido + `011` activity↔rooms + `012` system backups).
 
-- Si ves **`001`–`011`** alineado con el repo: OK (en dump viejo, el entrypoint sube a head).
+- Si ves **`001`–`012`** alineado con el repo: OK (en dump viejo, el entrypoint sube a head).
 - Si ves **`009`** y `\d studio_rooms` no tiene `shares_space_with_room_id`: la revisión 009 se reescribió; el entrypoint con imagen que incluye `010`/`011` lo corrige.
 - Si ves un **`003` huérfano** de la feature MP de reconciliación **descartada** (tablas `income_reconciliations` / `mp_income_lines` / `mp_import_batches` y sin el `003_mp_accounts` actual): limpiá antes del dump:
 

@@ -59,18 +59,30 @@ In production, the configured `MP_REDIRECT_URI` MUST be reachable through the pu
 
 ### Requirement: Migrations
 
-Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`010`**.
+Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`011`**.
 
-Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_room_hours` + `008_room_hour_slots` + `009_room_share_space` + `010_ensure_room_share_space`.
+Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_room_hours` + `008_room_hour_slots` + `009_room_share_space` + `010_ensure_room_share_space` + `011_activity_rooms`.
 
 `010` MUST be idempotent: add `studio_rooms.shares_space_with_room_id` if missing; drop leftover `space_id` / `studio_spaces` from the abandoned Espacios design. Operators MUST NOT assume stamp `009` means the share-space column exists (revision file was rewritten in place).
 
+`011` MUST create `studio_activity_rooms` (activity_id, room_id, unique pair). It MUST NOT invent room links for existing activities.
+
 Legacy note: if a restored dump still reports an orphan revision `003` from a **discarded** earlier MP reconciliation attempt that is **not** the current `003_mp_accounts` in the repo, operators MUST clean that revision before upgrade (drop orphan MP tables if present and stamp to a known good revision). New installs MUST only apply migrations present in the shipped image.
+
+#### Scenario: Fresh deploy includes activity rooms
+- **GIVEN** an empty database and images containing studio migrations
+- **WHEN** backend starts with migrate enabled
+- **THEN** Alembic MUST reach head `011` including `studio_activity_rooms`
+
+#### Scenario: Upgrade from 010 leaves old activities unlinked
+- **GIVEN** a database at head `010` with existing `studio_activities` rows
+- **WHEN** `011` applies
+- **THEN** those activities MUST have zero junction rows until an admin assigns rooms
 
 #### Scenario: Fresh deploy applies studio room hours
 - **GIVEN** an empty database and images containing studio migrations
 - **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST reach head `010` including room duration, multi-slot hours, and `shares_space_with_room_id`
+- **THEN** Alembic MUST reach head `011` including room duration, multi-slot hours, `shares_space_with_room_id`, and `studio_activity_rooms`
 
 #### Scenario: Upgrade from rewritten 009 stamp
 - **GIVEN** a database with `alembic_version = 009` and `studio_rooms.space_id` but no `shares_space_with_room_id`

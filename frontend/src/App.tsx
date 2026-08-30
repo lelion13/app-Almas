@@ -10,6 +10,7 @@ import ConciliacionPage from "./pages/ConciliacionPage";
 import StudioAdminPage from "./pages/StudioAdminPage";
 import InstructorAgendaPage from "./pages/InstructorAgendaPage";
 import AlumnoPortalPage from "./pages/AlumnoPortalPage";
+import SettingsBackupPage from "./pages/SettingsBackupPage";
 
 function Protected({ children }: { children: ReactNode }) {
   const { token, loading } = useAuth();
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="teachers" element={<TeachersPage />} />
         <Route path="conciliacion" element={<ConciliacionPage />} />
         <Route path="studio" element={<StudioAdminPage />} />
+        <Route path="configuracion" element={<SettingsBackupPage />} />
         <Route path="instructor" element={<InstructorAgendaPage />} />
         <Route path="mis-clases" element={<AlumnoPortalPage />} />
       </Route>

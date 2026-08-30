@@ -28,6 +28,7 @@ from app.models.studio import (
     StudioStudent,
     WaitlistEntry,
 )
+from app.models.backup import SystemBackupConfig, SystemBackupLog
 from app.models.user import User
 
 __all__ = [
@@ -59,4 +60,7 @@ __all__ = [
     "Attendance",
     "StudioSettings",
     "StudioAuditLog",
+    "SystemBackupConfig",
+    "SystemBackupLog",
 ]
+

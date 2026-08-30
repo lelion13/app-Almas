@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libpq5 \
+    && apt-get install -y --no-install-recommends curl libpq5 postgresql-client \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 appgroup \
     && useradd --system --uid 10001 --gid appgroup --home /app --shell /usr/sbin/nologin appuser

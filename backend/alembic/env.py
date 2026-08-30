@@ -31,6 +31,8 @@ from app.models import (  # noqa: F401
     StudioSettings,
     StudioSite,
     StudioStudent,
+    SystemBackupConfig,
+    SystemBackupLog,
     Teacher,
     User,
     WaitlistEntry,
