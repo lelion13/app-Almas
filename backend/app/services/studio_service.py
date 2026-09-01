@@ -499,12 +499,18 @@ def get_instructor_activity_ids(db: Session, instructor_id: UUID) -> list[UUID]:
 
 
 def instructor_to_response(db: Session, instructor: StudioInstructor) -> InstructorResponse:
+    login_email: str | None = None
+    if instructor.user_id:
+        user = db.get(User, instructor.user_id)
+        if user is not None:
+            login_email = user.email
     return InstructorResponse(
         id=instructor.id,
         full_name=instructor.full_name,
         email=instructor.email,
         phone=instructor.phone,
         user_id=instructor.user_id,
+        login_email=login_email,
         activity_ids=get_instructor_activity_ids(db, instructor.id),
         active=instructor.active,
         created_at=instructor.created_at,
@@ -551,14 +557,21 @@ def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) 
         if instructor.user_id:
             user = _get(db, User, instructor.user_id, "User")
             if login_email != user.email:
-                if db.scalar(select(User).where(User.email == login_email)) is not None:
-                    _error(status.HTTP_409_CONFLICT, "A user with this email already exists")
+                existing = db.scalar(select(User).where(User.email == login_email))
+                if existing is not None and existing.id != user.id:
+                    _error(
+                        status.HTTP_409_CONFLICT,
+                        "Ese email de acceso ya pertenece a otra cuenta. Usá un email distinto.",
+                    )
                 user.email = login_email
             user.password_hash = hash_password(password)
             user.role = "instructor"
         else:
             if db.scalar(select(User).where(User.email == login_email)) is not None:
-                _error(status.HTTP_409_CONFLICT, "A user with this email already exists")
+                _error(
+                    status.HTTP_409_CONFLICT,
+                    "Ese email de acceso ya pertenece a otra cuenta. Usá un email distinto.",
+                )
             user = User(email=login_email, password_hash=hash_password(password), role="instructor")
             db.add(user)
             db.flush()
@@ -568,10 +581,13 @@ def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) 
     if instructor.user_id and instructor.email:
         user = _get(db, User, instructor.user_id, "User")
         contact_email = instructor.email.strip()
-        if contact_email != user.email:
-            if db.scalar(select(User).where(User.email == contact_email, User.id != user.id)) is not None:
-                _error(status.HTTP_409_CONFLICT, "A user with this email already exists")
-            user.email = contact_email
+        if contact_email and contact_email != user.email:
+            existing = db.scalar(select(User).where(User.email == contact_email, User.id != user.id))
+            if existing is not None:
+                # Contact email owned by another account (e.g. admin): keep profile email only.
+                pass
+            else:
+                user.email = contact_email
     if activity_ids is not None:
         replace_instructor_activities(db, instructor.id, activity_ids)
     db.commit()

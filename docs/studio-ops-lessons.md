@@ -1,7 +1,8 @@
 # Studio Ops — lecciones y decisiones de implementación
 
 Specs (fuente de verdad): `openspec/specs/studio-*.md`, `auth`, `platform`, `deployment`.  
-Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`.
+Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`.  
+Change abierto: `openspec/changes/studio-instructors-edit/` (pre-archive).
 
 ## Convivencia de producto
 
@@ -45,6 +46,7 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 | Listado confuso / mal filtrado | Filtrar salones por sede elegida; mensaje si la sede no tiene salones |
 | Select serie mostraba UUID crudo | Labels con nombre de sede en opciones de salón |
 | Sedes solo create | Inline edit nombre/dirección/activa + `maps_url` (admin; alumno out) |
+| Instructores solo alta | Grilla Editar/Eliminar; actividades catálogo; email único contacto+acceso |
 
 ## Sedes: maps_url (006)
 
@@ -78,6 +80,16 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 - Series: el salón debe estar en los de la actividad; picker = sede ∩ salones de la actividad.
 - No se desvincula un salón si hay serie activa de esa actividad ahí.
 - Actividades existentes tras `011` quedan sin salones hasta Editar (sin backfill).
+
+## Instructores ↔ actividades (013)
+
+- Tabla `studio_instructor_activities` (N:N catálogo). `activity_ids` puede ser vacío.
+- UI Instructores: checkboxes de actividades; lista con **Editar** + **Eliminar** (soft `active=false`).
+- **Un solo email** en el formulario: contacto = acceso si se completa contraseña. Sin campo “email de acceso”.
+- `PATCH` con cambio de email de contacto sincroniza `User.email` si el instructor ya tiene login.
+- Series: el combo de instructor **no** filtra por actividades del instructor (catálogo informativo).
+- Quitar una actividad con series existentes: permitido (no valida historial).
+- Instructores existentes tras `013` quedan sin actividades hasta Editar (sin backfill).
 
 ## Portales
 
@@ -119,6 +131,6 @@ Recepción; notificaciones externas; check-in; reprogramación con topes; freeze
 
 ## API surface (resumen)
 
-- Admin: sites, rooms (+ `GET|PUT /rooms/{id}/hours` `{ slots }`, `shares_space_with_room_id`), activities (+ `room_ids` N:N), instructors, students, series, expand-sessions, sessions + mass-cancel, holidays, pack-products, student-packs, transfer-credits, fixed-enrollments, bookings cancel, waitlist, settings, audit.
+- Admin: sites, rooms (+ `GET|PUT /rooms/{id}/hours` `{ slots }`, `shares_space_with_room_id`), activities (+ `room_ids` N:N), **instructors** (+ `activity_ids` N:N catálogo; UI: email contacto = login si hay contraseña; `PATCH` sincroniza `User.email`), students, series, expand-sessions, sessions + mass-cancel, holidays, pack-products, student-packs, transfer-credits, fixed-enrollments, bookings cancel, waitlist, settings, audit.
 - Instructor: sessions (from today), session bookings, attendance.
 - Alumno: me/packs, me/sessions, me/book, me/bookings, me/cancel, me/waitlist, me/waitlist/{id}/confirm.

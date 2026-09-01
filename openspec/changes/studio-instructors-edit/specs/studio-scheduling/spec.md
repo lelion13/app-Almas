@@ -6,11 +6,15 @@
 
 Admin MUST CRUD studio instructors with: `full_name`, optional contact `email`, optional `phone`, optional login (`login_email` + `password` together), `active` flag, and **zero or more activity associations** (`activity_ids`). Create and update MUST accept `activity_ids` as a list (empty allowed). Response MUST include `activity_ids`. Activity links are **catalog only** and MUST NOT filter the Series instructor picker or block writes based on existing series/sessions.
 
-On Estudio → Instructores, admin MUST create with activity checkboxes (active activities). Each row MUST expose **Editar** (modal: name, email, phone, activities, active, optional login credentials; validation errors **inside** the modal) and **Eliminar** (soft: `active=false`; row remains listed as inactive). Hard-delete MUST NOT be used. Inactive instructors MUST remain visible on the list and MAY be reactivated via Editar.
+When an instructor has a linked `user_id`, updating contact `email` MUST keep the login `User.email` in sync (409 if the new email is already taken by another user).
+
+On Estudio → Instructores, admin MUST create with activity checkboxes (active activities). The form MUST use a **single email field** (contact); if a password is supplied, that email MUST be used as `login_email` for API create. A separate “email de acceso” field MUST NOT appear in the UI.
+
+Each row MUST expose **Editar** (modal: name, email, phone, activities, active, optional new password; validation errors **inside** the modal) and **Eliminar** (soft: `active=false`; row remains listed as inactive). Hard-delete MUST NOT be used. Inactive instructors MUST remain visible on the list and MAY be reactivated via Editar. If a new password is entered in Editar, `login_email` MUST equal the contact email.
 
 Instructors MUST remain assignable to series/sessions regardless of `activity_ids`. An instructor user MUST see only their agenda (`GET /studio/instructor/sessions`). Write access MUST remain AdminOnly.
 
-(Previously: instructors had API CRUD but UI was create-only with a plain list; no activity association.)
+(Previously: instructors had API CRUD but UI was create-only with a plain list; no activity association; separate login email in form.)
 
 #### Scenario: Create instructor with two activities
 - **GIVEN** an admin and two active activities
@@ -22,11 +26,22 @@ Instructors MUST remain assignable to series/sessions regardless of `activity_id
 - **WHEN** they create an instructor with empty `activity_ids`
 - **THEN** the instructor MUST be created with an empty association set
 
-#### Scenario: Edit updates profile, activities, and login
-- **GIVEN** an existing instructor
-- **WHEN** admin opens Editar, changes name, activity set, `active`, and supplies a new `login_email` + `password` pair
+#### Scenario: Create login from contact email
+- **GIVEN** an admin
+- **WHEN** they create an instructor with contact email `ana@studio.com` and password
+- **THEN** the instructor MUST have `email` = `ana@studio.com`
+- **AND** a User with role `instructor` MUST exist with email `ana@studio.com`
+
+#### Scenario: Edit updates profile, activities, and password
+- **GIVEN** an existing instructor with contact email
+- **WHEN** admin opens Editar, changes name, activity set, `active`, and supplies a new password
 - **THEN** list and GET MUST reflect the new values
 - **AND** validation errors MUST appear inside the modal
+
+#### Scenario: Contact email change syncs login
+- **GIVEN** an instructor with `user_id` and contact email `old@studio.com`
+- **WHEN** admin saves Editar with contact email `new@studio.com` (no password)
+- **THEN** the linked User email MUST become `new@studio.com`
 
 #### Scenario: Soft delete and reactivate
 - **GIVEN** an existing active instructor
@@ -54,3 +69,4 @@ Instructors MUST remain assignable to series/sessions regardless of `activity_id
 - Staff write access
 - Series validation against instructor activities
 - Hard-delete of instructors
+- Separate login email field in UI

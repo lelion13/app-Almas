@@ -47,9 +47,9 @@ Antes del dump, en la DB local:
 SELECT version_num FROM alembic_version;
 ```
 
-El código de producto llega hasta **`012`** (`005` studio ops + `006` maps_url + `007`–`010` salones/horarios/espacio compartido + `011` activity↔rooms + `012` system backups).
+El código de producto llega hasta **`013`** (`005` studio ops + `006` maps_url + `007`–`010` salones/horarios/espacio compartido + `011` activity↔rooms + `012` system backups + `013` instructor↔activities).
 
-- Si ves **`001`–`012`** alineado con el repo: OK (en dump viejo, el entrypoint sube a head).
+- Si ves **`001`–`013`** alineado con el repo: OK (en dump viejo, el entrypoint sube a head).
 - Si ves **`009`** y `\d studio_rooms` no tiene `shares_space_with_room_id`: la revisión 009 se reescribió; el entrypoint con imagen que incluye `010`/`011` lo corrige.
 - Si ves un **`003` huérfano** de la feature MP de reconciliación **descartada** (tablas `income_reconciliations` / `mp_income_lines` / `mp_import_batches` y sin el `003_mp_accounts` actual): limpiá antes del dump:
 
@@ -105,7 +105,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
 # (en ese caso exportá con pg_dump -Fp en lugar de -Fc)
 
 # 4) Levantar backend/frontend
-# Tras restore con schema, el entrypoint corre alembic hasta head (hoy **011**).
+# Tras restore con schema, el entrypoint corre alembic hasta head (hoy **013**).
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
@@ -146,7 +146,7 @@ El volumen `almas_pgdata` **no** se borra con `up -d`. Evitá `down -v` salvo de
 curl -sS -o /dev/null -w "%{http_code}\n" https://almas.lionapp.cloud/health   # 200
 curl -sS -o /dev/null -w "%{http_code}\n" https://almas.lionapp.cloud/docs     # 404 en prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db \
-  psql -U almas -d almas -c "SELECT version_num FROM alembic_version;"   # 011
+  psql -U almas -d almas -c "SELECT version_num FROM alembic_version;"   # 013
 ```
 
 Si `alembic_version` es `009` y `\d studio_rooms` muestra `space_id` y **no** `shares_space_with_room_id`, la revisión 009 se reescribió en el repo. Aplicá `010`/`011` (o el `ALTER` de `docs/studio-ops-lessons.md`) antes de usar Salones.

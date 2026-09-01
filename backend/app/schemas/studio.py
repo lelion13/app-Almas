@@ -216,6 +216,7 @@ class InstructorResponse(ORMModel):
     email: str | None
     phone: str | None
     user_id: UUID | None
+    login_email: str | None = None
     activity_ids: list[UUID]
     active: bool
     created_at: datetime

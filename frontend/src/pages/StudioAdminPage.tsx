@@ -411,9 +411,11 @@ export default function StudioAdminPage() {
 
   function openEditInstructor(instructor: Item) {
     setEditInstructor(instructor);
+    const loginEmail = instructor.login_email ? String(instructor.login_email) : "";
+    const contactEmail = String(instructor.email ?? "");
     setEditInstructorDraft({
       full_name: String(instructor.full_name ?? ""),
-      email: String(instructor.email ?? ""),
+      email: contactEmail || loginEmail,
       phone: String(instructor.phone ?? ""),
       active: instructor.active !== false,
       activity_ids: Array.isArray(instructor.activity_ids) ? (instructor.activity_ids as string[]).map(String) : [],
@@ -427,7 +429,8 @@ export default function StudioAdminPage() {
     if (!editInstructor) return;
     const email = editInstructorDraft.email.trim();
     const password = editInstructorDraft.password;
-    if (password && !email) {
+    const linkedLogin = editInstructor.login_email ? String(editInstructor.login_email).trim() : "";
+    if (password && !email && !linkedLogin) {
       setModalError("Indicá el email de contacto para actualizar la contraseña de acceso.");
       return;
     }
@@ -440,8 +443,9 @@ export default function StudioAdminPage() {
         active: editInstructorDraft.active,
         activity_ids: editInstructorDraft.activity_ids,
       };
-      if (email && password) {
-        body.login_email = email;
+      if (password) {
+        const loginTarget = email || linkedLogin;
+        body.login_email = loginTarget;
         body.password = password;
       }
       await apiFetch(`/api/v1/studio/instructors/${editInstructor.id}`, {
@@ -1134,7 +1138,13 @@ export default function StudioAdminPage() {
             <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-lg">
               <div className="border-b border-slate-100 p-4">
                 <h3 className="text-lg font-semibold text-slate-900">Editar instructor</h3>
-                <p className="mt-1 text-xs text-slate-500">El email de contacto es también el de acceso a la app.</p>
+                <p className="mt-1 text-xs text-slate-500">El email de contacto es también el de acceso a la app (salvo datos heredados inconsistentes).</p>
+                {editInstructor.login_email && String(editInstructor.login_email) !== editInstructorDraft.email.trim() && (
+                  <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    Email de acceso actual: <strong>{asText(editInstructor.login_email)}</strong>.
+                    Si el contacto muestra otro mail, corregilo y guardá para alinearlos.
+                  </p>
+                )}
                 {modalError && (
                   <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
                     {modalError}
