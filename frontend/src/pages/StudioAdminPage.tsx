@@ -1133,15 +1133,17 @@ export default function StudioAdminPage() {
             ))}
           </ul>
         )}
-        {editInstructor && (
+        {editInstructor && (() => {
+          const linkedLoginEmail = editInstructor.login_email ? String(editInstructor.login_email) : "";
+          return (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Editar instructor">
             <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-lg">
               <div className="border-b border-slate-100 p-4">
                 <h3 className="text-lg font-semibold text-slate-900">Editar instructor</h3>
                 <p className="mt-1 text-xs text-slate-500">El email de contacto es también el de acceso a la app (salvo datos heredados inconsistentes).</p>
-                {editInstructor.login_email && String(editInstructor.login_email) !== editInstructorDraft.email.trim() && (
+                {linkedLoginEmail && linkedLoginEmail !== editInstructorDraft.email.trim() && (
                   <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                    Email de acceso actual: <strong>{asText(editInstructor.login_email)}</strong>.
+                    Email de acceso actual: <strong>{linkedLoginEmail}</strong>.
                     Si el contacto muestra otro mail, corregilo y guardá para alinearlos.
                   </p>
                 )}
@@ -1180,7 +1182,8 @@ export default function StudioAdminPage() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       </section>}
       {tab === "students" && <ProfileSection title="Alumno" endpoint="students" fields={["full_name", "email", "login_email", "password", "document_id", "emergency_contact", "emergency_phone", "medical_notes"]} items={list("students")} values={values} setValue={setValue} submit={submit} form={form} />}
 
