@@ -16,7 +16,7 @@ from app.schemas.studio import (
     ActivityCreate, ActivityPatch, ActivityResponse, AttendanceResponse, AttendanceSet,
     AuditResponse, BookingCreate, BookingResponse, FixedEnrollmentCreate,
     FixedEnrollmentResponse, HolidayCreate, HolidayResponse, InstructorCreate,
-    InstructorResponse, PackAssign, PackProductCreate, PackProductPatch,
+    InstructorPatch, InstructorResponse, PackAssign, PackProductCreate, PackProductPatch,
     PackProductResponse, ProfilePatch, RoomCreate, RoomHoursReplace, RoomHoursResponse,
     RoomPatch, RoomResponse, SeriesCreate,
     SeriesPatch, SeriesResponse, SessionResponse, SettingsPatch, SettingsResponse,
@@ -114,7 +114,7 @@ def delete_activity(activity_id: UUID, _admin: AdminOnly, db: Session = Depends(
 
 @router.get("/instructors", response_model=list[InstructorResponse])
 def list_instructors(_admin: AdminOnly, db: Session = Depends(get_db)):
-    return _list(db, StudioInstructor)
+    return service.list_instructor_responses(db)
 
 
 @router.post("/instructors", response_model=InstructorResponse, status_code=status.HTTP_201_CREATED)
@@ -123,8 +123,10 @@ def create_instructor(body: InstructorCreate, _admin: AdminOnly, db: Session = D
 
 
 @router.patch("/instructors/{instructor_id}", response_model=InstructorResponse)
-def patch_instructor(instructor_id: UUID, body: ProfilePatch, _admin: AdminOnly, db: Session = Depends(get_db)):
-    return service.update_entity(db, service._get(db, StudioInstructor, instructor_id, "Instructor"), body.model_dump(exclude_unset=True))
+def patch_instructor(
+    instructor_id: UUID, body: InstructorPatch, _admin: AdminOnly, db: Session = Depends(get_db)
+):
+    return service.update_instructor(db, instructor_id, body.model_dump(exclude_unset=True))
 
 
 @router.delete("/instructors/{instructor_id}", status_code=status.HTTP_204_NO_CONTENT)

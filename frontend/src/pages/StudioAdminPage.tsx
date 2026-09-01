@@ -87,6 +87,12 @@ export default function StudioAdminPage() {
     name: "", level: "inicial", duration: "60", active: true, room_ids: [] as string[],
   });
   const [createRoomIds, setCreateRoomIds] = useState<string[]>([]);
+  const [createInstructorActivityIds, setCreateInstructorActivityIds] = useState<string[]>([]);
+  const [editInstructor, setEditInstructor] = useState<Item | null>(null);
+  const [editInstructorDraft, setEditInstructorDraft] = useState({
+    full_name: "", email: "", phone: "", active: true, activity_ids: [] as string[],
+    login_email: "", password: "",
+  });
 
   const value = (key: string) => values[key] ?? "";
   const setValue = (key: string, next: string) => setValues((current) => ({ ...current, [key]: next }));
@@ -149,6 +155,7 @@ export default function StudioAdminPage() {
       if (path.includes("/studio/rooms")) await load("roomsAll", "/api/v1/studio/rooms");
       if (path.includes("/studio/sites")) await load("sites", "/api/v1/studio/sites");
       if (path.includes("/studio/activities")) await load("activities", "/api/v1/studio/activities");
+      if (path.includes("/studio/instructors")) await load("instructors", "/api/v1/studio/instructors");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo guardar.");
     } finally { setBusy(false); }
@@ -205,6 +212,17 @@ export default function StudioAdminPage() {
   const toggleRoomId = (ids: string[], roomId: string) => (
     ids.includes(roomId) ? ids.filter((id) => id !== roomId) : [...ids, roomId]
   );
+  const toggleActivityId = (ids: string[], activityId: string) => (
+    ids.includes(activityId) ? ids.filter((id) => id !== activityId) : [...ids, activityId]
+  );
+  const instructorActivityLabels = (instructor: Item) => {
+    const ids = Array.isArray(instructor.activity_ids) ? (instructor.activity_ids as string[]) : [];
+    if (!ids.length) return "sin actividades";
+    return ids.map((aid) => {
+      const activity = list("activities").find((item) => item.id === aid);
+      return activity ? asText(activity.name) : asText(aid);
+    }).join(" · ");
+  };
   const selects = {
     site: activeSites, room: list("roomsAll"), activity: activeActivities,
     instructor: list("instructors"), student: list("students"), product: list("products"), pack: list("packs"),
@@ -349,6 +367,155 @@ export default function StudioAdminPage() {
         ))}
       </div>
     );
+  }
+
+  function ActivityPickers({
+    selected,
+    onChange,
+  }: {
+    selected: string[];
+    onChange: (next: string[]) => void;
+  }) {
+    const activitiesForPicker = list("activities").filter(
+      (activity) => activity.active !== false || selected.includes(activity.id),
+    );
+    if (!activitiesForPicker.length) {
+      return <p className="text-sm text-amber-800">No hay actividades. Creá una en <strong>Actividades</strong>.</p>;
+    }
+    return (
+      <div className="space-y-2 sm:col-span-2">
+        <p className="text-sm font-medium text-slate-700">Actividades (opcional)</p>
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <div className="flex flex-col gap-2">
+            {activitiesForPicker.map((activity) => (
+              <label key={activity.id} className="flex items-center gap-2 text-sm text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(activity.id)}
+                  onChange={() => onChange(toggleActivityId(selected, activity.id))}
+                />
+                {asText(activity.name)}
+                {activity.active === false ? <span className="text-xs text-amber-700">(inactiva)</span> : null}
+                <span className="text-xs text-slate-500">nivel {asText(activity.level)}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function closeEditInstructor() {
+    setEditInstructor(null);
+    setModalError(null);
+  }
+
+  function openEditInstructor(instructor: Item) {
+    setEditInstructor(instructor);
+    setEditInstructorDraft({
+      full_name: String(instructor.full_name ?? ""),
+      email: String(instructor.email ?? ""),
+      phone: String(instructor.phone ?? ""),
+      active: instructor.active !== false,
+      activity_ids: Array.isArray(instructor.activity_ids) ? (instructor.activity_ids as string[]).map(String) : [],
+      login_email: "",
+      password: "",
+    });
+    setError(null);
+    setModalError(null);
+  }
+
+  async function saveEditInstructor() {
+    if (!editInstructor) return;
+    const loginEmail = editInstructorDraft.login_email.trim();
+    const password = editInstructorDraft.password;
+    if ((loginEmail && !password) || (!loginEmail && password)) {
+      setModalError("Email de acceso y contraseña deben ingresarse juntos.");
+      return;
+    }
+    setBusy(true); setModalError(null); setNotice(null);
+    try {
+      const body: Record<string, unknown> = {
+        full_name: editInstructorDraft.full_name.trim(),
+        email: editInstructorDraft.email.trim() || null,
+        phone: editInstructorDraft.phone.trim() || null,
+        active: editInstructorDraft.active,
+        activity_ids: editInstructorDraft.activity_ids,
+      };
+      if (loginEmail && password) {
+        body.login_email = loginEmail;
+        body.password = password;
+      }
+      await apiFetch(`/api/v1/studio/instructors/${editInstructor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setNotice("Instructor actualizado.");
+      closeEditInstructor();
+      await load("instructors", "/api/v1/studio/instructors");
+      if (tab === "instructors") await loadTab("instructors");
+    } catch (e) {
+      setModalError(e instanceof ApiError ? e.message : "No se pudo actualizar el instructor.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function softDeleteInstructor(instructor: Item) {
+    if (!window.confirm(`¿Desactivar al instructor "${asText(instructor.full_name)}"? El historial se mantiene.`)) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await apiFetch(`/api/v1/studio/instructors/${instructor.id}`, { method: "DELETE" });
+      setNotice("Instructor desactivado.");
+      await load("instructors", "/api/v1/studio/instructors");
+      if (tab === "instructors") await loadTab("instructors");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo desactivar el instructor.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createInstructorSubmit(e: FormEvent) {
+    e.preventDefault();
+    const loginEmail = value("instructorLoginEmail").trim();
+    const password = value("instructorPassword");
+    if ((loginEmail && !password) || (!loginEmail && password)) {
+      setError("Email de acceso y contraseña deben ingresarse juntos.");
+      return;
+    }
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const body: Record<string, unknown> = {
+        full_name: value("instructorName").trim(),
+        email: value("instructorEmail").trim() || null,
+        phone: value("instructorPhone").trim() || null,
+        activity_ids: createInstructorActivityIds,
+      };
+      if (loginEmail && password) {
+        body.login_email = loginEmail;
+        body.password = password;
+      }
+      await apiFetch("/api/v1/studio/instructors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setNotice("Instructor creado.");
+      setCreateInstructorActivityIds([]);
+      setValue("instructorName", "");
+      setValue("instructorEmail", "");
+      setValue("instructorPhone", "");
+      setValue("instructorLoginEmail", "");
+      setValue("instructorPassword", "");
+      await load("instructors", "/api/v1/studio/instructors");
+      if (tab === "instructors") await loadTab("instructors");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo crear el instructor.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function patchSite(siteId: string, body: Record<string, unknown>, success: string) {
@@ -925,7 +1092,71 @@ export default function StudioAdminPage() {
         )}
       </section>}
 
-      {tab === "instructors" && <ProfileSection title="Instructor" endpoint="instructors" fields={["full_name", "email", "login_email", "password"]} items={list("instructors")} values={values} setValue={setValue} submit={submit} form={form} />}
+      {tab === "instructors" && <section className="space-y-4">
+        <form onSubmit={(e) => void createInstructorSubmit(e)} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+          <Field label="Nombre completo" value={value("instructorName")} onChange={(e) => setValue("instructorName", e.target.value)} required />
+          <Field label="Email de contacto" type="email" value={value("instructorEmail")} onChange={(e) => setValue("instructorEmail", e.target.value)} />
+          <Field label="Teléfono" value={value("instructorPhone")} onChange={(e) => setValue("instructorPhone", e.target.value)} />
+          <Field label="Email de acceso" type="email" value={value("instructorLoginEmail")} onChange={(e) => setValue("instructorLoginEmail", e.target.value)} />
+          <Field label="Contraseña (mín. 8)" type="password" value={value("instructorPassword")} onChange={(e) => setValue("instructorPassword", e.target.value)} />
+          <ActivityPickers selected={createInstructorActivityIds} onChange={setCreateInstructorActivityIds} />
+          <div className="sm:col-span-2"><button type="submit" className={buttonClass} disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button></div>
+        </form>
+        {list("instructors").length === 0 ? (
+          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">No hay instructores.</p>
+        ) : (
+          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+            {list("instructors").map((instructor) => (
+              <li key={instructor.id} className="flex flex-col gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-medium text-slate-900">
+                    {asText(instructor.full_name)}{instructor.active === false ? " · inactivo" : ""}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>email: {asText(instructor.email)}</span>
+                    <span>tel: {asText(instructor.phone)}</span>
+                    <span>actividades: {instructorActivityLabels(instructor)}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700" onClick={() => openEditInstructor(instructor)}>Editar</button>
+                  {instructor.active !== false && (
+                    <button type="button" className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => void softDeleteInstructor(instructor)}>Eliminar</button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {editInstructor && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Editar instructor">
+            <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-lg">
+              <h3 className="text-lg font-semibold text-slate-900">Editar instructor</h3>
+              {modalError && (
+                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+                  {modalError}
+                </p>
+              )}
+              <div className="mt-3 grid gap-3">
+                <Field label="Nombre completo" value={editInstructorDraft.full_name} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, full_name: e.target.value })); }} />
+                <Field label="Email de contacto" type="email" value={editInstructorDraft.email} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, email: e.target.value })); }} />
+                <Field label="Teléfono" value={editInstructorDraft.phone} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, phone: e.target.value })); }} />
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editInstructorDraft.active} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, active: e.target.checked })); }} /> Activo</label>
+                <ActivityPickers
+                  selected={editInstructorDraft.activity_ids}
+                  onChange={(next) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, activity_ids: next })); }}
+                />
+                <Field label="Email de acceso (opcional)" type="email" value={editInstructorDraft.login_email} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, login_email: e.target.value })); }} />
+                <Field label="Contraseña (mín. 8, con email de acceso)" type="password" value={editInstructorDraft.password} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, password: e.target.value })); }} />
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={closeEditInstructor}>Cancelar</button>
+                <button type="button" className={buttonClass} disabled={busy} onClick={() => void saveEditInstructor()}>{busy ? "Guardando…" : "Guardar"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>}
       {tab === "students" && <ProfileSection title="Alumno" endpoint="students" fields={["full_name", "email", "login_email", "password", "document_id", "emergency_contact", "emergency_phone", "medical_notes"]} items={list("students")} values={values} setValue={setValue} submit={submit} form={form} />}
 
       {tab === "series" && <section className="space-y-4">
@@ -1036,7 +1267,7 @@ export default function StudioAdminPage() {
 }
 
 function ProfileSection({ title, endpoint, fields, items, values, setValue, submit, form }: {
-  title: string; endpoint: "instructors" | "students"; fields: string[]; items: Item[];
+  title: string; endpoint: "students"; fields: string[]; items: Item[];
   values: Record<string, string>; setValue: (key: string, value: string) => void;
   submit: (path: string, body: unknown, success: string) => Promise<void>;
   form: (onSubmit: (e: FormEvent) => void, children: React.ReactNode) => React.ReactNode;

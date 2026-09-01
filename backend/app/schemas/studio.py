@@ -174,7 +174,7 @@ class ProfileCreate(BaseModel):
 
 
 class InstructorCreate(ProfileCreate):
-    pass
+    activity_ids: list[UUID] = Field(default_factory=list)
 
 
 class StudentCreate(ProfileCreate):
@@ -191,6 +191,18 @@ class ProfilePatch(BaseModel):
     active: bool | None = None
 
 
+class InstructorPatch(ProfilePatch):
+    activity_ids: list[UUID] | None = None
+    login_email: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def require_login_pair(self):
+        if bool(self.login_email) != bool(self.password):
+            raise ValueError("login_email and password must be supplied together")
+        return self
+
+
 class StudentPatch(ProfilePatch):
     document_id: str | None = Field(default=None, max_length=64)
     emergency_contact: str | None = Field(default=None, max_length=255)
@@ -204,6 +216,7 @@ class InstructorResponse(ORMModel):
     email: str | None
     phone: str | None
     user_id: UUID | None
+    activity_ids: list[UUID]
     active: bool
     created_at: datetime
 

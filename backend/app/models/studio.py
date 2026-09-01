@@ -99,6 +99,21 @@ class StudioInstructor(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class StudioInstructorActivity(Base):
+    """Catalog of which activities an instructor may teach (informational only)."""
+
+    __tablename__ = "studio_instructor_activities"
+    __table_args__ = (UniqueConstraint("instructor_id", "activity_id", name="uq_studio_instructor_activity"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    instructor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_instructors.id"), nullable=False
+    )
+    activity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_activities.id"), nullable=False
+    )
+
+
 class StudioStudent(Base):
     __tablename__ = "studio_students"
 

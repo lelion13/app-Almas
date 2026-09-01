@@ -26,6 +26,7 @@ from app.models import (  # noqa: F401
     StudioAuditLog,
     StudioHoliday,
     StudioInstructor,
+    StudioInstructorActivity,
     StudioRoom,
     StudioRoomHours,
     StudioSettings,

@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from app.schemas.studio import ActivityCreate, ActivityPatch, SiteCreate, SitePatch, _normalize_maps_url
+from app.schemas.studio import ActivityCreate, ActivityPatch, InstructorCreate, InstructorPatch, SiteCreate, SitePatch, _normalize_maps_url
 from app.models.studio import StudentPack
 from app.services.studio_service import (
     open_time_ranges_overlap,
@@ -117,3 +117,28 @@ def test_activity_patch_rejects_empty_room_ids_when_set():
     assert len(ok.room_ids) == 1
     with pytest.raises(ValidationError):
         ActivityPatch(room_ids=[])
+
+
+def test_instructor_create_allows_empty_activity_ids():
+    ok = InstructorCreate(full_name="Ana López", activity_ids=[])
+    assert ok.activity_ids == []
+    linked = InstructorCreate(full_name="Ana López", activity_ids=[uuid4(), uuid4()])
+    assert len(linked.activity_ids) == 2
+
+
+def test_instructor_patch_login_pair_validator():
+    patch = InstructorPatch(full_name="Ana")
+    assert patch.login_email is None
+    ok = InstructorPatch(login_email="ana@example.com", password="secret123")
+    assert ok.login_email == "ana@example.com"
+    with pytest.raises(ValidationError):
+        InstructorPatch(login_email="ana@example.com")
+    with pytest.raises(ValidationError):
+        InstructorPatch(password="secret123")
+
+
+def test_instructor_patch_activity_ids_optional():
+    patch = InstructorPatch()
+    assert patch.activity_ids is None
+    ok = InstructorPatch(activity_ids=[])
+    assert ok.activity_ids == []

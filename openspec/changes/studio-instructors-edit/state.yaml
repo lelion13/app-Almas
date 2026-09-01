@@ -1,0 +1,14 @@
+change: studio-instructors-edit
+status: implemented
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: pending
+  archive: pending
+updated: 2026-09-01
+notes: |
+  Backend M2M + UI implemented. pytest and frontend build pass. Manual VPS verification pending.

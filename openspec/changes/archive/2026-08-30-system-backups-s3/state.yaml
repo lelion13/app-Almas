@@ -1,0 +1,14 @@
+change: system-backups-s3
+status: archived
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: done
+  verify: done
+  archive: done
+updated: 2026-08-30
+notes: |
+  Change fully implemented, verified live in production, delta specs synchronized into main specs, and archived.

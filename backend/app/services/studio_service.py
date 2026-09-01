@@ -17,11 +17,11 @@ from app.core.security import hash_password
 from app.models.studio import (
     Attendance, Booking, ClassSeries, ClassSession, FixedEnrollment, PackProduct,
     StudentPack, StudioActivity, StudioActivityRoom, StudioAuditLog, StudioHoliday,
-    StudioInstructor, StudioRoom, StudioRoomHours, StudioSettings, StudioSite,
+    StudioInstructor, StudioInstructorActivity, StudioRoom, StudioRoomHours, StudioSettings, StudioSite,
     StudioStudent, WaitlistEntry,
 )
 from app.models.user import User
-from app.schemas.studio import ActivityResponse
+from app.schemas.studio import ActivityResponse, InstructorResponse
 from app.services.studio_audit import write_audit
 
 
@@ -469,8 +469,107 @@ def _create_profile(db: Session, model: type[Any], role: str, values: dict[str, 
     return _save(db, model(**values))
 
 
-def create_instructor(db: Session, values: dict[str, Any]) -> StudioInstructor:
-    return _create_profile(db, StudioInstructor, "instructor", values)
+def create_instructor(db: Session, values: dict[str, Any]) -> InstructorResponse:
+    activity_ids = values.pop("activity_ids", [])
+    login_email = values.pop("login_email", None)
+    password = values.pop("password", None)
+    if login_email:
+        if db.scalar(select(User).where(User.email == login_email)) is not None:
+            _error(status.HTTP_409_CONFLICT, "A user with this email already exists")
+        user = User(email=login_email, password_hash=hash_password(password), role="instructor")
+        db.add(user)
+        db.flush()
+        values["user_id"] = user.id
+    instructor = StudioInstructor(**values)
+    db.add(instructor)
+    db.flush()
+    replace_instructor_activities(db, instructor.id, activity_ids)
+    db.commit()
+    db.refresh(instructor)
+    return instructor_to_response(db, instructor)
+
+
+def get_instructor_activity_ids(db: Session, instructor_id: UUID) -> list[UUID]:
+    rows = db.scalars(
+        select(StudioInstructorActivity.activity_id).where(
+            StudioInstructorActivity.instructor_id == instructor_id
+        )
+    ).all()
+    return list(rows)
+
+
+def instructor_to_response(db: Session, instructor: StudioInstructor) -> InstructorResponse:
+    return InstructorResponse(
+        id=instructor.id,
+        full_name=instructor.full_name,
+        email=instructor.email,
+        phone=instructor.phone,
+        user_id=instructor.user_id,
+        activity_ids=get_instructor_activity_ids(db, instructor.id),
+        active=instructor.active,
+        created_at=instructor.created_at,
+    )
+
+
+def list_instructor_responses(db: Session) -> list[InstructorResponse]:
+    instructors = db.scalars(select(StudioInstructor)).all()
+    return [instructor_to_response(db, row) for row in instructors]
+
+
+def _normalize_id_list(ids: list[UUID]) -> list[UUID]:
+    seen: set[UUID] = set()
+    ordered: list[UUID] = []
+    for item_id in ids:
+        if item_id not in seen:
+            seen.add(item_id)
+            ordered.append(item_id)
+    return ordered
+
+
+def replace_instructor_activities(db: Session, instructor_id: UUID, activity_ids: list[UUID]) -> None:
+    """Full replace of instructor↔activity catalog links. Empty set allowed."""
+    activity_ids = _normalize_id_list(activity_ids)
+    current = set(get_instructor_activity_ids(db, instructor_id))
+    for activity_id in activity_ids:
+        activity = _get(db, StudioActivity, activity_id, "Activity")
+        if not activity.active and activity_id not in current:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Activity '{activity.name}' is inactive")
+    for row in db.scalars(
+        select(StudioInstructorActivity).where(StudioInstructorActivity.instructor_id == instructor_id)
+    ).all():
+        db.delete(row)
+    for activity_id in activity_ids:
+        db.add(StudioInstructorActivity(instructor_id=instructor_id, activity_id=activity_id))
+
+
+def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) -> InstructorResponse:
+    instructor = _get(db, StudioInstructor, instructor_id, "Instructor")
+    activity_ids = values.pop("activity_ids", None)
+    login_email = values.pop("login_email", None)
+    password = values.pop("password", None)
+    if login_email and password:
+        if instructor.user_id:
+            user = _get(db, User, instructor.user_id, "User")
+            if login_email != user.email:
+                if db.scalar(select(User).where(User.email == login_email)) is not None:
+                    _error(status.HTTP_409_CONFLICT, "A user with this email already exists")
+                user.email = login_email
+            user.password_hash = hash_password(password)
+            user.role = "instructor"
+        else:
+            if db.scalar(select(User).where(User.email == login_email)) is not None:
+                _error(status.HTTP_409_CONFLICT, "A user with this email already exists")
+            user = User(email=login_email, password_hash=hash_password(password), role="instructor")
+            db.add(user)
+            db.flush()
+            instructor.user_id = user.id
+    for key, value in values.items():
+        setattr(instructor, key, value)
+    if activity_ids is not None:
+        replace_instructor_activities(db, instructor.id, activity_ids)
+    db.commit()
+    db.refresh(instructor)
+    return instructor_to_response(db, instructor)
 
 
 def create_student(db: Session, values: dict[str, Any]) -> StudioStudent:
