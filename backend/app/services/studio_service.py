@@ -565,6 +565,13 @@ def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) 
             instructor.user_id = user.id
     for key, value in values.items():
         setattr(instructor, key, value)
+    if instructor.user_id and instructor.email:
+        user = _get(db, User, instructor.user_id, "User")
+        contact_email = instructor.email.strip()
+        if contact_email != user.email:
+            if db.scalar(select(User).where(User.email == contact_email, User.id != user.id)) is not None:
+                _error(status.HTTP_409_CONFLICT, "A user with this email already exists")
+            user.email = contact_email
     if activity_ids is not None:
         replace_instructor_activities(db, instructor.id, activity_ids)
     db.commit()

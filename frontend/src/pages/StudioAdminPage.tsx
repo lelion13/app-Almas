@@ -90,8 +90,7 @@ export default function StudioAdminPage() {
   const [createInstructorActivityIds, setCreateInstructorActivityIds] = useState<string[]>([]);
   const [editInstructor, setEditInstructor] = useState<Item | null>(null);
   const [editInstructorDraft, setEditInstructorDraft] = useState({
-    full_name: "", email: "", phone: "", active: true, activity_ids: [] as string[],
-    login_email: "", password: "",
+    full_name: "", email: "", phone: "", active: true, activity_ids: [] as string[], password: "",
   });
 
   const value = (key: string) => values[key] ?? "";
@@ -418,7 +417,6 @@ export default function StudioAdminPage() {
       phone: String(instructor.phone ?? ""),
       active: instructor.active !== false,
       activity_ids: Array.isArray(instructor.activity_ids) ? (instructor.activity_ids as string[]).map(String) : [],
-      login_email: "",
       password: "",
     });
     setError(null);
@@ -427,23 +425,23 @@ export default function StudioAdminPage() {
 
   async function saveEditInstructor() {
     if (!editInstructor) return;
-    const loginEmail = editInstructorDraft.login_email.trim();
+    const email = editInstructorDraft.email.trim();
     const password = editInstructorDraft.password;
-    if ((loginEmail && !password) || (!loginEmail && password)) {
-      setModalError("Email de acceso y contraseña deben ingresarse juntos.");
+    if (password && !email) {
+      setModalError("Indicá el email de contacto para actualizar la contraseña de acceso.");
       return;
     }
     setBusy(true); setModalError(null); setNotice(null);
     try {
       const body: Record<string, unknown> = {
         full_name: editInstructorDraft.full_name.trim(),
-        email: editInstructorDraft.email.trim() || null,
+        email: email || null,
         phone: editInstructorDraft.phone.trim() || null,
         active: editInstructorDraft.active,
         activity_ids: editInstructorDraft.activity_ids,
       };
-      if (loginEmail && password) {
-        body.login_email = loginEmail;
+      if (email && password) {
+        body.login_email = email;
         body.password = password;
       }
       await apiFetch(`/api/v1/studio/instructors/${editInstructor.id}`, {
@@ -479,22 +477,22 @@ export default function StudioAdminPage() {
 
   async function createInstructorSubmit(e: FormEvent) {
     e.preventDefault();
-    const loginEmail = value("instructorLoginEmail").trim();
+    const email = value("instructorEmail").trim();
     const password = value("instructorPassword");
-    if ((loginEmail && !password) || (!loginEmail && password)) {
-      setError("Email de acceso y contraseña deben ingresarse juntos.");
+    if (password && !email) {
+      setError("Indicá el email de contacto para habilitar el acceso a la app.");
       return;
     }
     setBusy(true); setError(null); setNotice(null);
     try {
       const body: Record<string, unknown> = {
         full_name: value("instructorName").trim(),
-        email: value("instructorEmail").trim() || null,
+        email: email || null,
         phone: value("instructorPhone").trim() || null,
         activity_ids: createInstructorActivityIds,
       };
-      if (loginEmail && password) {
-        body.login_email = loginEmail;
+      if (email && password) {
+        body.login_email = email;
         body.password = password;
       }
       await apiFetch("/api/v1/studio/instructors", {
@@ -507,7 +505,6 @@ export default function StudioAdminPage() {
       setValue("instructorName", "");
       setValue("instructorEmail", "");
       setValue("instructorPhone", "");
-      setValue("instructorLoginEmail", "");
       setValue("instructorPassword", "");
       await load("instructors", "/api/v1/studio/instructors");
       if (tab === "instructors") await loadTab("instructors");
@@ -1095,10 +1092,14 @@ export default function StudioAdminPage() {
       {tab === "instructors" && <section className="space-y-4">
         <form onSubmit={(e) => void createInstructorSubmit(e)} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
           <Field label="Nombre completo" value={value("instructorName")} onChange={(e) => setValue("instructorName", e.target.value)} required />
-          <Field label="Email de contacto" type="email" value={value("instructorEmail")} onChange={(e) => setValue("instructorEmail", e.target.value)} />
           <Field label="Teléfono" value={value("instructorPhone")} onChange={(e) => setValue("instructorPhone", e.target.value)} />
-          <Field label="Email de acceso" type="email" value={value("instructorLoginEmail")} onChange={(e) => setValue("instructorLoginEmail", e.target.value)} />
-          <Field label="Contraseña (mín. 8)" type="password" value={value("instructorPassword")} onChange={(e) => setValue("instructorPassword", e.target.value)} />
+          <div className="sm:col-span-2">
+            <Field label="Email de contacto" type="email" value={value("instructorEmail")} onChange={(e) => setValue("instructorEmail", e.target.value)} />
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <Field label="Contraseña de acceso (opcional)" type="password" value={value("instructorPassword")} onChange={(e) => setValue("instructorPassword", e.target.value)} />
+            <p className="text-xs text-slate-500">Si la completás, el email de contacto será también el de acceso a la app.</p>
+          </div>
           <ActivityPickers selected={createInstructorActivityIds} onChange={setCreateInstructorActivityIds} />
           <div className="sm:col-span-2"><button type="submit" className={buttonClass} disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button></div>
         </form>
@@ -1130,26 +1131,40 @@ export default function StudioAdminPage() {
         )}
         {editInstructor && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Editar instructor">
-            <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-lg">
-              <h3 className="text-lg font-semibold text-slate-900">Editar instructor</h3>
-              {modalError && (
-                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
-                  {modalError}
-                </p>
-              )}
-              <div className="mt-3 grid gap-3">
-                <Field label="Nombre completo" value={editInstructorDraft.full_name} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, full_name: e.target.value })); }} />
-                <Field label="Email de contacto" type="email" value={editInstructorDraft.email} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, email: e.target.value })); }} />
-                <Field label="Teléfono" value={editInstructorDraft.phone} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, phone: e.target.value })); }} />
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editInstructorDraft.active} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, active: e.target.checked })); }} /> Activo</label>
-                <ActivityPickers
-                  selected={editInstructorDraft.activity_ids}
-                  onChange={(next) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, activity_ids: next })); }}
-                />
-                <Field label="Email de acceso (opcional)" type="email" value={editInstructorDraft.login_email} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, login_email: e.target.value })); }} />
-                <Field label="Contraseña (mín. 8, con email de acceso)" type="password" value={editInstructorDraft.password} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, password: e.target.value })); }} />
+            <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-lg">
+              <div className="border-b border-slate-100 p-4">
+                <h3 className="text-lg font-semibold text-slate-900">Editar instructor</h3>
+                <p className="mt-1 text-xs text-slate-500">El email de contacto es también el de acceso a la app.</p>
+                {modalError && (
+                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+                    {modalError}
+                  </p>
+                )}
               </div>
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <Field label="Nombre completo" value={editInstructorDraft.full_name} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, full_name: e.target.value })); }} />
+                  </div>
+                  <Field label="Email de contacto" type="email" value={editInstructorDraft.email} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, email: e.target.value })); }} />
+                  <Field label="Teléfono" value={editInstructorDraft.phone} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, phone: e.target.value })); }} />
+                  <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                    <input type="checkbox" checked={editInstructorDraft.active} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, active: e.target.checked })); }} />
+                    Activo
+                  </label>
+                  <div className="sm:col-span-2">
+                    <ActivityPickers
+                      selected={editInstructorDraft.activity_ids}
+                      onChange={(next) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, activity_ids: next })); }}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2 border-t border-slate-100 pt-3">
+                    <Field label="Nueva contraseña (opcional)" type="password" value={editInstructorDraft.password} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, password: e.target.value })); }} />
+                    <p className="text-xs text-slate-500">Dejala vacía para mantener la actual. Si la cambiás, se usará el email de contacto.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
                 <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={closeEditInstructor}>Cancelar</button>
                 <button type="button" className={buttonClass} disabled={busy} onClick={() => void saveEditInstructor()}>{busy ? "Guardando…" : "Guardar"}</button>
               </div>
