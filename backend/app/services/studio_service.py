@@ -470,8 +470,18 @@ def _create_profile(db: Session, model: type[Any], role: str, values: dict[str, 
     return _save(db, model(**values))
 
 
+def _normalize_email(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip().lower()
+    return text or None
+
+
 def _user_email_taken(db: Session, email: str, *, except_user_id: UUID | None = None) -> bool:
-    query = select(User.id).where(User.email == email)
+    norm = _normalize_email(email)
+    if not norm:
+        return False
+    query = select(User.id).where(func.lower(User.email) == norm)
     if except_user_id is not None:
         query = query.where(User.id != except_user_id)
     return db.scalar(query) is not None
@@ -603,39 +613,36 @@ def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) 
     activity_ids = values.pop("activity_ids", None)
     password = values.pop("password", None)
     email_sent = "email" in values
-    requested_email = (values.pop("email") or "").strip() or None if email_sent else None
+    requested_email: str | None = None
+    if email_sent:
+        requested_email = (values.pop("email") or "").strip() or None
 
     for key, value in values.items():
         setattr(instructor, key, value)
 
     if instructor.user_id:
         user = _get(db, User, instructor.user_id, "User")
-        login_email = (user.email or "").strip() or None
-        effective_email = requested_email or login_email
-
-        if password and not effective_email:
-            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email para crear o actualizar el acceso.")
-
-        # Change login only when the submitted email differs from the current login.
-        if requested_email and requested_email != login_email:
+        if email_sent and _normalize_email(requested_email) != _normalize_email(user.email):
+            if not requested_email:
+                _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email del instructor.")
             if _user_email_taken(db, requested_email, except_user_id=user.id):
                 _error(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     "Ese email ya pertenece a otra cuenta. Elegí un email distinto.",
                 )
             user.email = requested_email
-            login_email = user.email
         if password:
             user.password_hash = hash_password(password)
             user.role = "instructor"
-        instructor.email = login_email
+        instructor.email = (user.email or "").strip() or None
     else:
-        profile_email = requested_email if email_sent else (instructor.email or "").strip() or None
-        instructor.email = profile_email
-        if password and not profile_email:
-            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email para crear o actualizar el acceso.")
-        if password and profile_email:
-            existing_user = db.scalar(select(User).where(User.email == profile_email))
+        if email_sent:
+            instructor.email = requested_email
+        profile_email = (instructor.email or "").strip() or None
+        if password:
+            if not profile_email:
+                _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email para crear o actualizar el acceso.")
+            existing_user = db.scalar(select(User).where(func.lower(User.email) == profile_email.lower()))
             if existing_user is not None:
                 linked = db.scalar(
                     select(StudioInstructor).where(

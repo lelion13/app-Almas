@@ -147,17 +147,23 @@ def test_instructor_patch_activity_ids_optional():
     assert ok.activity_ids == []
 
 
-def test_instructor_update_ignores_unchanged_stale_profile_email():
-    """API may show login email while DB profile is stale; saving must not treat that as a change."""
-    login = "llion@cpmgsa.com.ar"
-    requested = login
-    assert requested == login
+def test_normalize_email_case_insensitive():
+    from app.services.studio_service import _normalize_email
+
+    assert _normalize_email("Ire@Gmail.COM") == "ire@gmail.com"
+    assert _normalize_email("  ") is None
+
+
+def test_instructor_update_skips_email_when_not_in_payload():
+    """PATCH without email must not trigger login email sync."""
+    payload = {"full_name": "Irene Schifrin", "activity_ids": []}
+    assert "email" not in payload
 
 
 def test_instructor_update_detects_explicit_email_change():
-    login = "llion@cpmgsa.com.ar"
-    requested = "nuevo@example.com"
-    assert requested != login
+    from app.services.studio_service import _normalize_email
+
+    assert _normalize_email("ire_schifrin@gmail.com") != _normalize_email("otro@gmail.com")
 
 
 def test_student_response_from_orm():

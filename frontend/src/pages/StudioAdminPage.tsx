@@ -431,9 +431,11 @@ export default function StudioAdminPage() {
 
   async function saveEditInstructor() {
     if (!editInstructor) return;
+    const originalEmail = String(editInstructor.email ?? "").trim().toLowerCase();
     const email = editInstructorDraft.email.trim();
+    const emailChanged = email.toLowerCase() !== originalEmail;
     const password = editInstructorPasswordTouched ? editInstructorDraft.password : "";
-    if (password && !email) {
+    if (password && !email && !originalEmail) {
       setModalError("Indicá el email para crear o actualizar el acceso.");
       return;
     }
@@ -441,11 +443,11 @@ export default function StudioAdminPage() {
     try {
       const body: Record<string, unknown> = {
         full_name: editInstructorDraft.full_name.trim(),
-        email: email || null,
         phone: editInstructorDraft.phone.trim() || null,
         active: editInstructorDraft.active,
         activity_ids: editInstructorDraft.activity_ids,
       };
+      if (emailChanged) body.email = email || null;
       if (password) body.password = password;
       await apiFetch(`/api/v1/studio/instructors/${editInstructor.id}`, {
         method: "PATCH",
