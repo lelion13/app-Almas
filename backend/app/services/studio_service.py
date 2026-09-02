@@ -469,14 +469,33 @@ def _create_profile(db: Session, model: type[Any], role: str, values: dict[str, 
     return _save(db, model(**values))
 
 
+def _user_email_taken(db: Session, email: str, *, except_user_id: UUID | None = None) -> bool:
+    query = select(User.id).where(User.email == email)
+    if except_user_id is not None:
+        query = query.where(User.id != except_user_id)
+    return db.scalar(query) is not None
+
+
+def _instructor_canonical_email(db: Session, instructor: StudioInstructor) -> str | None:
+    if instructor.user_id:
+        user = db.get(User, instructor.user_id)
+        if user is not None and user.email:
+            return user.email
+    email = (instructor.email or "").strip()
+    return email or None
+
+
 def create_instructor(db: Session, values: dict[str, Any]) -> InstructorResponse:
     activity_ids = values.pop("activity_ids", [])
-    login_email = values.pop("login_email", None)
     password = values.pop("password", None)
-    if login_email:
-        if db.scalar(select(User).where(User.email == login_email)) is not None:
-            _error(status.HTTP_409_CONFLICT, "A user with this email already exists")
-        user = User(email=login_email, password_hash=hash_password(password), role="instructor")
+    email = (values.get("email") or "").strip() or None
+    values["email"] = email
+    if password:
+        if not email:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email para habilitar el acceso.")
+        if _user_email_taken(db, email):
+            _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
+        user = User(email=email, password_hash=hash_password(password), role="instructor")
         db.add(user)
         db.flush()
         values["user_id"] = user.id
@@ -499,18 +518,14 @@ def get_instructor_activity_ids(db: Session, instructor_id: UUID) -> list[UUID]:
 
 
 def instructor_to_response(db: Session, instructor: StudioInstructor) -> InstructorResponse:
-    login_email: str | None = None
-    if instructor.user_id:
-        user = db.get(User, instructor.user_id)
-        if user is not None:
-            login_email = user.email
+    canonical_email = _instructor_canonical_email(db, instructor)
     return InstructorResponse(
         id=instructor.id,
         full_name=instructor.full_name,
-        email=instructor.email,
+        email=canonical_email,
         phone=instructor.phone,
         user_id=instructor.user_id,
-        login_email=login_email,
+        login_email=canonical_email if instructor.user_id else None,
         activity_ids=get_instructor_activity_ids(db, instructor.id),
         active=instructor.active,
         created_at=instructor.created_at,
@@ -551,43 +566,38 @@ def replace_instructor_activities(db: Session, instructor_id: UUID, activity_ids
 def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) -> InstructorResponse:
     instructor = _get(db, StudioInstructor, instructor_id, "Instructor")
     activity_ids = values.pop("activity_ids", None)
-    login_email = values.pop("login_email", None)
     password = values.pop("password", None)
-    if login_email and password:
-        if instructor.user_id:
-            user = _get(db, User, instructor.user_id, "User")
-            if login_email != user.email:
-                existing = db.scalar(select(User).where(User.email == login_email))
-                if existing is not None and existing.id != user.id:
-                    _error(
-                        status.HTTP_409_CONFLICT,
-                        "Ese email de acceso ya pertenece a otra cuenta. Usá un email distinto.",
-                    )
-                user.email = login_email
-            user.password_hash = hash_password(password)
-            user.role = "instructor"
-        else:
-            if db.scalar(select(User).where(User.email == login_email)) is not None:
-                _error(
-                    status.HTTP_409_CONFLICT,
-                    "Ese email de acceso ya pertenece a otra cuenta. Usá un email distinto.",
-                )
-            user = User(email=login_email, password_hash=hash_password(password), role="instructor")
-            db.add(user)
-            db.flush()
-            instructor.user_id = user.id
     for key, value in values.items():
         setattr(instructor, key, value)
-    if instructor.user_id and instructor.email:
+
+    email = (instructor.email or "").strip() or None
+    instructor.email = email
+
+    if password and not email:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email para crear o actualizar el acceso.")
+
+    if instructor.user_id:
         user = _get(db, User, instructor.user_id, "User")
-        contact_email = instructor.email.strip()
-        if contact_email and contact_email != user.email:
-            existing = db.scalar(select(User).where(User.email == contact_email, User.id != user.id))
-            if existing is not None:
-                # Contact email owned by another account (e.g. admin): keep profile email only.
-                pass
-            else:
-                user.email = contact_email
+        if email and email != user.email:
+            if _user_email_taken(db, email, except_user_id=user.id):
+                _error(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "Ese email ya pertenece a otra cuenta. Elegí un email distinto.",
+                )
+            user.email = email
+        if password:
+            user.password_hash = hash_password(password)
+            user.role = "instructor"
+        instructor.email = user.email
+    elif password and email:
+        if _user_email_taken(db, email):
+            _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
+        user = User(email=email, password_hash=hash_password(password), role="instructor")
+        db.add(user)
+        db.flush()
+        instructor.user_id = user.id
+        instructor.email = user.email
+
     if activity_ids is not None:
         replace_instructor_activities(db, instructor.id, activity_ids)
     db.commit()

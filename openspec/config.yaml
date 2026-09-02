@@ -6,7 +6,7 @@ context: |
   Stack: React 18 + TS + Vite 5 + Tailwind 3 | FastAPI + Pydantic v2 + SQLAlchemy 2 + Alembic | PostgreSQL 18 | JWT+bcrypt
   Architecture: routers → services → repositories → models; frontend pages + apiFetch + Protected routes
   Deploy: docker-compose.prod.yml (db, backend, frontend/Nginx); Traefik → frontend; GHCR images
-  Testing: pytest (backend); Alembic product head = 013 (instructor↔activities)
+  Testing: pytest (backend); Alembic product head = 014 (align instructor emails)
   Domains: auth, monthly-closings, siguefit-imports, expense-imports, manual-expenses, teachers, deployment, platform, mercado-pago, studio-sites, studio-scheduling, studio-students, studio-packs, studio-audit
   Active change: studio-instructors-edit
 

@@ -126,15 +126,18 @@ def test_instructor_create_allows_empty_activity_ids():
     assert len(linked.activity_ids) == 2
 
 
-def test_instructor_patch_login_pair_validator():
+def test_instructor_create_password_requires_email():
+    ok = InstructorCreate(full_name="Ana López", email="ana@example.com", password="secret123")
+    assert ok.email == "ana@example.com"
+    with pytest.raises(ValidationError):
+        InstructorCreate(full_name="Ana López", password="secret123")
+
+
+def test_instructor_patch_allows_password_without_login_email():
     patch = InstructorPatch(full_name="Ana")
-    assert patch.login_email is None
-    ok = InstructorPatch(login_email="ana@example.com", password="secret123")
-    assert ok.login_email == "ana@example.com"
-    with pytest.raises(ValidationError):
-        InstructorPatch(login_email="ana@example.com")
-    with pytest.raises(ValidationError):
-        InstructorPatch(password="secret123")
+    assert patch.password is None
+    ok = InstructorPatch(password="secret123")
+    assert ok.password == "secret123"
 
 
 def test_instructor_patch_activity_ids_optional():

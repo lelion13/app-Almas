@@ -81,12 +81,13 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 - No se desvincula un salón si hay serie activa de esa actividad ahí.
 - Actividades existentes tras `011` quedan sin salones hasta Editar (sin backfill).
 
-## Instructores ↔ actividades (013)
+## Instructores ↔ actividades (013) + email único (014)
 
 - Tabla `studio_instructor_activities` (N:N catálogo). `activity_ids` puede ser vacío.
 - UI Instructores: checkboxes de actividades; lista con **Editar** + **Eliminar** (soft `active=false`).
-- **Un solo email** en el formulario: contacto = acceso si se completa contraseña. Sin campo “email de acceso”.
-- `PATCH` con cambio de email de contacto sincroniza `User.email` si el instructor ya tiene login.
+- **Un solo email** en el formulario: es contacto y acceso (si hay cuenta vinculada). Sin campo “email de acceso”.
+- `PATCH`/`POST` con email actualizan `studio_instructors.email` y `users.email` juntos cuando hay login.
+- Migración **`014`**: alinea perfiles viejos donde contacto ≠ login (gana el email de la cuenta vinculada).
 - Series: el combo de instructor **no** filtra por actividades del instructor (catálogo informativo).
 - Quitar una actividad con series existentes: permitido (no valida historial).
 - Instructores existentes tras `013` quedan sin actividades hasta Editar (sin backfill).

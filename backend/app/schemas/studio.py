@@ -173,8 +173,19 @@ class ProfileCreate(BaseModel):
         return self
 
 
-class InstructorCreate(ProfileCreate):
+class InstructorCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=64)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    active: bool = True
     activity_ids: list[UUID] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def password_requires_email(self):
+        if self.password and not (self.email or "").strip():
+            raise ValueError("email is required when password is supplied")
+        return self
 
 
 class StudentCreate(ProfileCreate):
@@ -193,14 +204,7 @@ class ProfilePatch(BaseModel):
 
 class InstructorPatch(ProfilePatch):
     activity_ids: list[UUID] | None = None
-    login_email: str | None = Field(default=None, max_length=255)
     password: str | None = Field(default=None, min_length=8, max_length=128)
-
-    @model_validator(mode="after")
-    def require_login_pair(self):
-        if bool(self.login_email) != bool(self.password):
-            raise ValueError("login_email and password must be supplied together")
-        return self
 
 
 class StudentPatch(ProfilePatch):
