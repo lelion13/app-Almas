@@ -341,6 +341,7 @@ def replace_room_hours(db: Session, room_id: UUID, slots: list[dict[str, Any]]) 
     _assert_no_shared_room_hours_overlap(db, room, proposed)
     for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id == room_id)).all():
         db.delete(row)
+    db.flush()
     for slot in proposed:
         db.add(
             StudioRoomHours(
@@ -420,6 +421,7 @@ def replace_activity_rooms(db: Session, activity_id: UUID, room_ids: list[UUID])
         select(StudioActivityRoom).where(StudioActivityRoom.activity_id == activity_id)
     ).all():
         db.delete(row)
+    db.flush()
     for room_id in room_ids:
         db.add(StudioActivityRoom(activity_id=activity_id, room_id=room_id))
 
@@ -548,7 +550,10 @@ def create_instructor(db: Session, values: dict[str, Any]) -> InstructorResponse
         db.commit()
     except IntegrityError:
         db.rollback()
-        _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
+        _error(
+            status.HTTP_409_CONFLICT,
+            "Conflicto al guardar el instructor (email duplicado o actividades).",
+        )
     db.refresh(instructor)
     return instructor_to_response(db, instructor)
 
@@ -604,6 +609,7 @@ def replace_instructor_activities(db: Session, instructor_id: UUID, activity_ids
         select(StudioInstructorActivity).where(StudioInstructorActivity.instructor_id == instructor_id)
     ).all():
         db.delete(row)
+    db.flush()
     for activity_id in activity_ids:
         db.add(StudioInstructorActivity(instructor_id=instructor_id, activity_id=activity_id))
 
@@ -669,7 +675,10 @@ def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) 
         db.commit()
     except IntegrityError:
         db.rollback()
-        _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
+        _error(
+            status.HTTP_409_CONFLICT,
+            "Conflicto al guardar el instructor (email duplicado o actividades).",
+        )
     db.refresh(instructor)
     return instructor_to_response(db, instructor)
 
