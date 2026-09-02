@@ -11,6 +11,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
@@ -21,7 +22,7 @@ from app.models.studio import (
     StudioStudent, WaitlistEntry,
 )
 from app.models.user import User
-from app.schemas.studio import ActivityResponse, InstructorResponse
+from app.schemas.studio import ActivityResponse, InstructorResponse, StudentResponse
 from app.services.studio_audit import write_audit
 
 
@@ -485,6 +486,36 @@ def _instructor_canonical_email(db: Session, instructor: StudioInstructor) -> st
     return email or None
 
 
+def _profile_login_email(db: Session, user_id: UUID | None) -> str | None:
+    if not user_id:
+        return None
+    user = db.get(User, user_id)
+    return user.email if user is not None else None
+
+
+def student_to_response(db: Session, student: StudioStudent) -> StudentResponse:
+    login_email = _profile_login_email(db, student.user_id)
+    return StudentResponse(
+        id=student.id,
+        full_name=student.full_name,
+        email=student.email,
+        phone=student.phone,
+        user_id=student.user_id,
+        login_email=login_email,
+        document_id=student.document_id,
+        emergency_contact=student.emergency_contact,
+        emergency_phone=student.emergency_phone,
+        medical_notes=student.medical_notes,
+        active=student.active,
+        created_at=student.created_at,
+    )
+
+
+def list_student_responses(db: Session) -> list[StudentResponse]:
+    students = db.scalars(select(StudioStudent)).all()
+    return [student_to_response(db, row) for row in students]
+
+
 def create_instructor(db: Session, values: dict[str, Any]) -> InstructorResponse:
     activity_ids = values.pop("activity_ids", [])
     password = values.pop("password", None)
@@ -503,7 +534,11 @@ def create_instructor(db: Session, values: dict[str, Any]) -> InstructorResponse
     db.add(instructor)
     db.flush()
     replace_instructor_activities(db, instructor.id, activity_ids)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
     db.refresh(instructor)
     return instructor_to_response(db, instructor)
 
@@ -600,13 +635,24 @@ def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) 
 
     if activity_ids is not None:
         replace_instructor_activities(db, instructor.id, activity_ids)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
     db.refresh(instructor)
     return instructor_to_response(db, instructor)
 
 
-def create_student(db: Session, values: dict[str, Any]) -> StudioStudent:
-    return _create_profile(db, StudioStudent, "alumno", values)
+def create_student(db: Session, values: dict[str, Any]) -> StudentResponse:
+    student = _create_profile(db, StudioStudent, "alumno", values)
+    return student_to_response(db, student)
+
+
+def update_student(db: Session, student_id: UUID, values: dict[str, Any]) -> StudentResponse:
+    student = _get(db, StudioStudent, student_id, "Student")
+    student = update_entity(db, student, values)
+    return student_to_response(db, student)
 
 
 def update_entity(db: Session, item: Any, values: dict[str, Any]) -> Any:

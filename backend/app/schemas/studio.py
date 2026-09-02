@@ -214,19 +214,23 @@ class StudentPatch(ProfilePatch):
     medical_notes: str | None = None
 
 
-class InstructorResponse(ORMModel):
+class ProfileResponse(ORMModel):
     id: UUID
     full_name: str
     email: str | None
     phone: str | None
     user_id: UUID | None
-    login_email: str | None = None
-    activity_ids: list[UUID]
     active: bool
     created_at: datetime
 
 
-class StudentResponse(InstructorResponse):
+class InstructorResponse(ProfileResponse):
+    login_email: str | None = None
+    activity_ids: list[UUID]
+
+
+class StudentResponse(ProfileResponse):
+    login_email: str | None = None
     document_id: str | None
     emergency_contact: str | None
     emergency_phone: str | None

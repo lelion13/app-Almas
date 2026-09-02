@@ -136,7 +136,7 @@ def delete_instructor(instructor_id: UUID, _admin: AdminOnly, db: Session = Depe
 
 @router.get("/students", response_model=list[StudentResponse])
 def list_students(_admin: AdminOnly, db: Session = Depends(get_db)):
-    return _list(db, StudioStudent)
+    return service.list_student_responses(db)
 
 
 @router.post("/students", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)
@@ -146,7 +146,7 @@ def create_student(body: StudentCreate, _admin: AdminOnly, db: Session = Depends
 
 @router.patch("/students/{student_id}", response_model=StudentResponse)
 def patch_student(student_id: UUID, body: StudentPatch, _admin: AdminOnly, db: Session = Depends(get_db)):
-    return service.update_entity(db, service._get(db, StudioStudent, student_id, "Student"), body.model_dump(exclude_unset=True))
+    return service.update_student(db, student_id, body.model_dump(exclude_unset=True))
 
 
 @router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)

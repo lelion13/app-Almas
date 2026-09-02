@@ -3,8 +3,8 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from app.schemas.studio import ActivityCreate, ActivityPatch, InstructorCreate, InstructorPatch, SiteCreate, SitePatch, _normalize_maps_url
-from app.models.studio import StudentPack
+from app.schemas.studio import ActivityCreate, ActivityPatch, InstructorCreate, InstructorPatch, SiteCreate, SitePatch, StudentResponse, _normalize_maps_url
+from app.models.studio import StudentPack, StudioStudent
 from app.services.studio_service import (
     open_time_ranges_overlap,
     pack_can_book_at_site,
@@ -145,3 +145,16 @@ def test_instructor_patch_activity_ids_optional():
     assert patch.activity_ids is None
     ok = InstructorPatch(activity_ids=[])
     assert ok.activity_ids == []
+
+
+def test_student_response_from_orm():
+    from datetime import datetime, timezone
+    student = StudioStudent(
+        id=uuid4(),
+        full_name="Ana",
+        active=True,
+        created_at=datetime.now(timezone.utc),
+    )
+    parsed = StudentResponse.model_validate(student)
+    assert parsed.full_name == "Ana"
+    assert parsed.login_email is None
