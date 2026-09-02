@@ -92,6 +92,7 @@ export default function StudioAdminPage() {
   const [editInstructorDraft, setEditInstructorDraft] = useState({
     full_name: "", email: "", phone: "", active: true, activity_ids: [] as string[], password: "",
   });
+  const [editInstructorPasswordTouched, setEditInstructorPasswordTouched] = useState(false);
 
   const value = (key: string) => values[key] ?? "";
   const setValue = (key: string, next: string) => setValues((current) => ({ ...current, [key]: next }));
@@ -406,6 +407,7 @@ export default function StudioAdminPage() {
 
   function closeEditInstructor() {
     setEditInstructor(null);
+    setEditInstructorPasswordTouched(false);
     setModalError(null);
   }
 
@@ -419,6 +421,10 @@ export default function StudioAdminPage() {
       activity_ids: Array.isArray(instructor.activity_ids) ? (instructor.activity_ids as string[]).map(String) : [],
       password: "",
     });
+    setEditInstructorPasswordTouched(false);
+    // Clear create form so browser autofill (admin login) does not leak into edits.
+    setValue("instructorEmail", "");
+    setValue("instructorPassword", "");
     setError(null);
     setModalError(null);
   }
@@ -426,7 +432,7 @@ export default function StudioAdminPage() {
   async function saveEditInstructor() {
     if (!editInstructor) return;
     const email = editInstructorDraft.email.trim();
-    const password = editInstructorDraft.password;
+    const password = editInstructorPasswordTouched ? editInstructorDraft.password : "";
     if (password && !email) {
       setModalError("Indicá el email para crear o actualizar el acceso.");
       return;
@@ -1084,14 +1090,18 @@ export default function StudioAdminPage() {
       </section>}
 
       {tab === "instructors" && <section className="space-y-4">
-        <form onSubmit={(e) => void createInstructorSubmit(e)} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
-          <Field label="Nombre completo" value={value("instructorName")} onChange={(e) => setValue("instructorName", e.target.value)} required />
-          <Field label="Teléfono" value={value("instructorPhone")} onChange={(e) => setValue("instructorPhone", e.target.value)} />
+        <form
+          onSubmit={(e) => void createInstructorSubmit(e)}
+          autoComplete="off"
+          className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2"
+        >
+          <Field label="Nombre completo" name="studio-new-instructor-name" autoComplete="off" value={value("instructorName")} onChange={(e) => setValue("instructorName", e.target.value)} required />
+          <Field label="Teléfono" name="studio-new-instructor-phone" autoComplete="off" value={value("instructorPhone")} onChange={(e) => setValue("instructorPhone", e.target.value)} />
           <div className="sm:col-span-2">
-            <Field label="Email" type="email" value={value("instructorEmail")} onChange={(e) => setValue("instructorEmail", e.target.value)} />
+            <Field label="Email" type="email" name="studio-new-instructor-email" autoComplete="off" value={value("instructorEmail")} onChange={(e) => setValue("instructorEmail", e.target.value)} />
           </div>
           <div className="space-y-1 sm:col-span-2">
-            <Field label="Contraseña de acceso (opcional)" type="password" value={value("instructorPassword")} onChange={(e) => setValue("instructorPassword", e.target.value)} />
+            <Field label="Contraseña de acceso (opcional)" type="password" name="studio-new-instructor-password" autoComplete="new-password" value={value("instructorPassword")} onChange={(e) => setValue("instructorPassword", e.target.value)} />
             <p className="text-xs text-slate-500">Si la completás, el mismo email será el de acceso a la app.</p>
           </div>
           <ActivityPickers selected={createInstructorActivityIds} onChange={setCreateInstructorActivityIds} />
@@ -1135,13 +1145,18 @@ export default function StudioAdminPage() {
                   </p>
                 )}
               </div>
+              <form
+                autoComplete="off"
+                onSubmit={(e) => { e.preventDefault(); void saveEditInstructor(); }}
+                className="flex min-h-0 flex-1 flex-col"
+              >
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="sm:col-span-2">
-                    <Field label="Nombre completo" value={editInstructorDraft.full_name} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, full_name: e.target.value })); }} />
+                    <Field label="Nombre completo" name="studio-edit-instructor-name" autoComplete="off" value={editInstructorDraft.full_name} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, full_name: e.target.value })); }} />
                   </div>
-                  <Field label="Email" type="email" value={editInstructorDraft.email} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, email: e.target.value })); }} />
-                  <Field label="Teléfono" value={editInstructorDraft.phone} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, phone: e.target.value })); }} />
+                  <Field label="Email" type="email" name="studio-edit-instructor-email" autoComplete="off" value={editInstructorDraft.email} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, email: e.target.value })); }} />
+                  <Field label="Teléfono" name="studio-edit-instructor-phone" autoComplete="off" value={editInstructorDraft.phone} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, phone: e.target.value })); }} />
                   <label className="flex items-center gap-2 text-sm sm:col-span-2">
                     <input type="checkbox" checked={editInstructorDraft.active} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, active: e.target.checked })); }} />
                     Activo
@@ -1153,15 +1168,27 @@ export default function StudioAdminPage() {
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-2 border-t border-slate-100 pt-3">
-                    <Field label="Nueva contraseña (opcional)" type="password" autoComplete="new-password" value={editInstructorDraft.password} onChange={(e) => { setModalError(null); setEditInstructorDraft((d) => ({ ...d, password: e.target.value })); }} />
+                    <Field
+                      label="Nueva contraseña (opcional)"
+                      type="password"
+                      name="studio-edit-instructor-password"
+                      autoComplete="new-password"
+                      value={editInstructorDraft.password}
+                      onChange={(e) => {
+                        setModalError(null);
+                        setEditInstructorPasswordTouched(true);
+                        setEditInstructorDraft((d) => ({ ...d, password: e.target.value }));
+                      }}
+                    />
                     <p className="text-xs text-slate-500">Dejala vacía para mantener la actual.</p>
                   </div>
                 </div>
               </div>
               <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
                 <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={closeEditInstructor}>Cancelar</button>
-                <button type="button" className={buttonClass} disabled={busy} onClick={() => void saveEditInstructor()}>{busy ? "Guardando…" : "Guardar"}</button>
+                <button type="submit" className={buttonClass} disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button>
               </div>
+              </form>
             </div>
           </div>
         )}

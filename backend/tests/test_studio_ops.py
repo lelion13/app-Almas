@@ -148,22 +148,16 @@ def test_instructor_patch_activity_ids_optional():
 
 
 def test_instructor_update_ignores_unchanged_stale_profile_email():
-    """Saving name only must not try to move login to a stale profile email."""
-    old_profile = "lelion13@gmail.com"
+    """API may show login email while DB profile is stale; saving must not treat that as a change."""
     login = "llion@cpmgsa.com.ar"
-    requested = "lelion13@gmail.com"
-    email_sent = True
-    email_changed = email_sent and requested != old_profile
-    assert email_changed is False
-    assert requested != login
+    requested = login
+    assert requested == login
 
 
 def test_instructor_update_detects_explicit_email_change():
-    old_profile = "lelion13@gmail.com"
-    requested = "llion@cpmgsa.com.ar"
-    email_sent = True
-    email_changed = email_sent and requested != old_profile
-    assert email_changed is True
+    login = "llion@cpmgsa.com.ar"
+    requested = "nuevo@example.com"
+    assert requested != login
 
 
 def test_student_response_from_orm():

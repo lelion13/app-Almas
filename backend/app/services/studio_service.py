@@ -600,11 +600,10 @@ def replace_instructor_activities(db: Session, instructor_id: UUID, activity_ids
 
 def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) -> InstructorResponse:
     instructor = _get(db, StudioInstructor, instructor_id, "Instructor")
-    old_profile_email = (instructor.email or "").strip() or None
     activity_ids = values.pop("activity_ids", None)
     password = values.pop("password", None)
     email_sent = "email" in values
-    requested_email = (values.pop("email") or "").strip() or None if email_sent else old_profile_email
+    requested_email = (values.pop("email") or "").strip() or None if email_sent else None
 
     for key, value in values.items():
         setattr(instructor, key, value)
@@ -617,9 +616,8 @@ def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) 
         if password and not effective_email:
             _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email para crear o actualizar el acceso.")
 
-        # Only change login email when the user explicitly edited the email field.
-        email_changed = email_sent and requested_email != old_profile_email
-        if email_changed and requested_email and requested_email != login_email:
+        # Change login only when the submitted email differs from the current login.
+        if requested_email and requested_email != login_email:
             if _user_email_taken(db, requested_email, except_user_id=user.id):
                 _error(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -632,17 +630,31 @@ def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) 
             user.role = "instructor"
         instructor.email = login_email
     else:
-        instructor.email = requested_email
-        if password and not requested_email:
+        profile_email = requested_email if email_sent else (instructor.email or "").strip() or None
+        instructor.email = profile_email
+        if password and not profile_email:
             _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email para crear o actualizar el acceso.")
-        if password and requested_email:
-            if _user_email_taken(db, requested_email):
-                _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
-            user = User(email=requested_email, password_hash=hash_password(password), role="instructor")
-            db.add(user)
-            db.flush()
-            instructor.user_id = user.id
-            instructor.email = user.email
+        if password and profile_email:
+            existing_user = db.scalar(select(User).where(User.email == profile_email))
+            if existing_user is not None:
+                linked = db.scalar(
+                    select(StudioInstructor).where(
+                        StudioInstructor.user_id == existing_user.id,
+                        StudioInstructor.id != instructor.id,
+                    )
+                )
+                if linked is not None:
+                    _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
+                instructor.user_id = existing_user.id
+                existing_user.password_hash = hash_password(password)
+                existing_user.role = "instructor"
+                instructor.email = existing_user.email
+            else:
+                user = User(email=profile_email, password_hash=hash_password(password), role="instructor")
+                db.add(user)
+                db.flush()
+                instructor.user_id = user.id
+                instructor.email = user.email
 
     if activity_ids is not None:
         replace_instructor_activities(db, instructor.id, activity_ids)
