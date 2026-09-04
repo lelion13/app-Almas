@@ -33,14 +33,14 @@
 - Migración: `alembic upgrade head` (revisión **`014`**: alinea `studio_instructors.email` con login vinculado; **`013`**: `studio_instructor_activities`; **`012`**: backups; **`011`**: `studio_activity_rooms`; **`010`** asegura `shares_space_with_room_id`).
 - API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
 - UI:
-  - Admin → **Estudio** (`/studio`): sedes; salones (crear + **Editar** + **Horarios**; opcional “comparte espacio”); actividades (salones asociados + **Editar** + **Eliminar** soft); **instructores** (actividades catálogo + **Editar** + **Eliminar** soft; un solo email = contacto y acceso); grilla, alumnos, paquetes, feriados, auditoría.
-  - Instructor → **Mi agenda** (`/instructor`): sesiones + asistencia.
-  - Alumno → **Mis clases** (`/mis-clases`): packs, reservar/cancelar, lista de espera (confirmación manual).
+  - Admin → **Estudio** (`/studio`): sedes; salones; actividades; instructores; alumnos; feriados; auditoría.
+    - **Pausado** (flag `STUDIO_SCHEDULE_PAUSED`): Series, Sesiones, Productos, Paquetes y portales de reserva/agenda (APIs 410; UI stub).
+  - Instructor → **Mi agenda** (`/instructor`): stub reconstrucción mientras pause.
+  - Alumno → **Mis clases** (`/mis-clases`): stub reconstrucción mientras pause.
 - Packs de N clases (sin mensual libre); alcance `all_sedes` o `one_sede` al asignar.
 - Specs: `openspec/specs/studio-*.md` (+ `auth`, `platform`, `deployment`).
 - Lecciones: `docs/studio-ops-lessons.md`
-- Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`
-- Change abierto (pre-archive): `openspec/changes/studio-instructors-edit/`
+- Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`, `2026-09-02-studio-instructors-edit/`
 
 ## Backups de Base de Datos (S3 / Cloudflare R2)
 - Menú admin **Configuración** (`/configuracion`).

@@ -15,7 +15,7 @@ Completar **Estudio → Instructores**: CRUD con grilla (Editar / Eliminar como 
 | # | Decisión |
 |---|----------|
 | 1 | Alcance inicial: UI; backend mínimo para persistir `activity_ids` |
-| 2 | Campos: nombre, email contacto, teléfono, login opcional, activo |
+| 2 | Campos: nombre, email, teléfono, login opcional, activo |
 | 3 | Actividades: catálogo only — **no** filtra picker de Series |
 | 4 | 0..N actividades; checkboxes múltiples (como actividad↔salón) |
 | 5 | Soft delete; editar login/password; inactivos visibles + reactivación |
@@ -23,10 +23,18 @@ Completar **Estudio → Instructores**: CRUD con grilla (Editar / Eliminar como 
 | 7 | Teachers: **no tocar** |
 | 8 | Permisos: admin only |
 | 9 | Botones de fila a la **derecha** (igual Salones/Actividades) |
-| 10 | **Post-apply:** email de contacto = email de acceso (un solo campo en UI); contraseña opcional habilita login |
+| 10 | **Email único:** un campo en UI; API instructores usa `email`+`password`, no `login_email` |
 
-## Recommendation
-Junction `studio_instructor_activities` (Alembic **013**), replace-set en write, UI dedicada en `StudioAdminPage`. Login: UI envía `login_email` = `email` cuando hay contraseña; backend sincroniza `User.email` si cambia el contacto y ya existe cuenta.
+## Lessons learned (post-verify)
 
-## Ready for archive
-Pending manual VPS verification (user testing).
+1. **No confundir 409 de email con IntegrityError de junction:** al reemplazar `activity_ids`, hacer `flush()` tras deletes.
+2. **PATCH edit no debe reenviar email sin cambio:** el backend solo debe sincronizar login cuando `email` viene explícito y distinto.
+3. **Autofill:** formulario de alta puede precargar credenciales del admin; modal debe aislar con `autocomplete="off"` y password solo si touched.
+4. **Migración 014:** repara perfil ≠ login en datos viejos; no sustituye reglas de API.
+5. **StudentResponse ≠ InstructorResponse:** listar alumnos no puede heredar `activity_ids`.
+
+## Recommendation (shipped)
+Junction `studio_instructor_activities` (**013**), email align (**014**), UI dedicada en `StudioAdminPage`, replace-set con flush, email único en instructores.
+
+## Status
+Archived 2026-09-02 after VPS sign-off.

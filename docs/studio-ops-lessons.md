@@ -1,8 +1,8 @@
 # Studio Ops — lecciones y decisiones de implementación
 
 Specs (fuente de verdad): `openspec/specs/studio-*.md`, `auth`, `platform`, `deployment`.  
-Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`.  
-Change abierto: `openspec/changes/studio-instructors-edit/` (pre-archive).
+Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`, `2026-09-02-studio-instructors-edit/`.  
+Active change: `openspec/changes/studio-schedule-pause/`.
 
 ## Convivencia de producto
 
@@ -10,7 +10,15 @@ Change abierto: `openspec/changes/studio-instructors-edit/` (pre-archive).
 - Navegación y home por rol: admin (Cierres + Estudio + …), instructor (Mi agenda), alumno (Mis clases).
 - Tablas nuevas bajo prefijo `studio_*` (mig **`005_studio_ops`**). Cierres/MP sin schema change en este change.
 
-## Modelo de créditos (shipped)
+## Agenda / paquetes en pausa (`studio-schedule-pause`)
+
+- Flag env: **`STUDIO_SCHEDULE_PAUSED`** (default `true`). APIs de series, sesiones, packs, book/waitlist/attendance y portales instructor/alumno → **410**.
+- UI Estudio: tabs ocultas Series / Sesiones / Productos / Paquetes. Catálogo (sedes…alumnos) + feriados + auditoría siguen.
+- Portales alumno/instructor: stub “en reconstrucción” (sin llamadas a APIs pausadas).
+- Datos y tablas **conservados**. Rollback: `STUDIO_SCHEDULE_PAUSED=false` + redeploy.
+- Rebuild de turnos = change futuro (schedule + entitlement + book como un stack).
+
+## Modelo de créditos (shipped, en pausa operativa)
 
 | Evento | Crédito |
 |--------|---------|
@@ -86,11 +94,33 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 - Tabla `studio_instructor_activities` (N:N catálogo). `activity_ids` puede ser vacío.
 - UI Instructores: checkboxes de actividades; lista con **Editar** + **Eliminar** (soft `active=false`).
 - **Un solo email** en el formulario: es contacto y acceso (si hay cuenta vinculada). Sin campo “email de acceso”.
-- `PATCH`/`POST` con email actualizan `studio_instructors.email` y `users.email` juntos cuando hay login.
+- API instructores: `email` + `password` opcional — **no** `login_email` (alumnos sí usan `login_email`).
+- `PATCH` edit: omitir `email` del JSON si no cambió; `password` solo si el admin la editó explícitamente.
+- Backend: actualizar `users.email` solo si `email` viene en el PATCH y es distinto al login actual (normalizado).
 - Migración **`014`**: alinea perfiles viejos donde contacto ≠ login (gana el email de la cuenta vinculada).
+- **Junction replace:** tras borrar filas M2M, hacer `db.flush()` antes de insertar (evita 409 engañoso).
 - Series: el combo de instructor **no** filtra por actividades del instructor (catálogo informativo).
 - Quitar una actividad con series existentes: permitido (no valida historial).
 - Instructores existentes tras `013` quedan sin actividades hasta Editar (sin backfill).
+- `StudentResponse` separado de `InstructorResponse` (no heredar `activity_ids`).
+
+### Troubleshooting instructores (producción)
+
+| Síntoma | Causa real | Verificación | Fix |
+|---------|------------|--------------|-----|
+| 409 “email ya pertenece…” al editar sin cambiar mail | `replace_instructor_activities` sin `flush` → violación unique `(instructor_id, activity_id)` | Network: PATCH sin cambio de email; logs backend 409 | Imagen backend con flush post-delete; redeploy |
+| 409/422 email con perfil/login alineados en DB | PATCH enviaba `email` siempre; backend sincronizaba login en cada guardado | Payload PATCH incluye `email` sin cambio | Frontend: omitir `email` si unchanged; backend: solo sync si `email` en body y distinto |
+| Formulario alta muestra mail/contraseña del admin | Autofill del navegador en form create | Campos precargados al abrir tab Instructores | `autocomplete="off"`, nombres únicos, limpiar alta al abrir Editar |
+| Modal envía contraseña sin tocarla | Autofill en campo password del modal | Payload PATCH con `password` | Enviar password solo si campo fue editado (`passwordTouched`) |
+| GET `/studio/students` 500 | `StudentResponse` heredaba `activity_ids` de instructor | Log backend ValidationError | Serializar alumnos con `student_to_response` / schema separado |
+
+**Validar deploy correcto:**
+1. `index.html` referencia JS actual (ej. `index-1wuEZsMq.js`, no hash viejo).
+2. `SELECT version_num FROM alembic_version;` → `014`.
+3. PATCH edit instructor sin cambiar email → body **sin** clave `email`.
+4. SQL alineación: `perfil` = `login` en `studio_instructors` JOIN `users`.
+
+Change archivado: `openspec/changes/archive/2026-09-02-studio-instructors-edit/`.
 
 ## Portales
 
@@ -103,15 +133,16 @@ Implicación: “lost class” ≈ no cancelar a tiempo; el flag `no_show_deduct
 ## Auth / usuarios
 
 - Roles extras: `instructor`, `alumno` (mantienen `admin`/`staff`).
-- Alta con login: `login_email` **y** `password` juntos (Pydantic); bcrypt; no devolver password.
+- Alta alumno con login: `login_email` **y** `password` juntos (Pydantic).
+- Alta instructor con login: `email` **y** `password` (sin `login_email` en API instructores).
 - Staff: excluido del admin de Estudio en MVP.
 
 ## Deploy VPS (ops)
 
 1. Push `main` → GHCR workflow (`ghcr.io/lelion13/app-almas-{backend,frontend}:main` + SHA).
 2. En VPS, **siempre** `docker compose … pull` + `up -d` (el update de Hostinger API puede marcar success sin recrear contenedores si el tag `:main` no fuerza pull).
-3. Backend entrypoint: `alembic upgrade head` → **`011`**.
-4. Verificar: `/health` 200; `SELECT version_num FROM alembic_version;` → `011`.
+3. Backend entrypoint: `alembic upgrade head` → **`014`**.
+4. Verificar: `/health` 200; `SELECT version_num FROM alembic_version;` → `014`.
 5. Si prod quedó stamped `009` **sin** columna `shares_space_with_room_id` (revisión reescrita): preferí imagen con `010`/`011` + `alembic upgrade head`. Si hace falta desbloquear a mano:
 
 ```sql
@@ -132,6 +163,6 @@ Recepción; notificaciones externas; check-in; reprogramación con topes; freeze
 
 ## API surface (resumen)
 
-- Admin: sites, rooms (+ `GET|PUT /rooms/{id}/hours` `{ slots }`, `shares_space_with_room_id`), activities (+ `room_ids` N:N), **instructors** (+ `activity_ids` N:N catálogo; UI: email contacto = login si hay contraseña; `PATCH` sincroniza `User.email`), students, series, expand-sessions, sessions + mass-cancel, holidays, pack-products, student-packs, transfer-credits, fixed-enrollments, bookings cancel, waitlist, settings, audit.
+- Admin: sites, rooms (+ `GET|PUT /rooms/{id}/hours` `{ slots }`, `shares_space_with_room_id`), activities (+ `room_ids` N:N), **instructors** (+ `activity_ids` N:N catálogo; UI email único; PATCH omit email if unchanged; junction flush), students, series, expand-sessions, sessions + mass-cancel, holidays, pack-products, student-packs, transfer-credits, fixed-enrollments, bookings cancel, waitlist, settings, audit.
 - Instructor: sessions (from today), session bookings, attendance.
 - Alumno: me/packs, me/sessions, me/book, me/bookings, me/cancel, me/waitlist, me/waitlist/{id}/confirm.

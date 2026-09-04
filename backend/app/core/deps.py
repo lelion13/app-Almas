@@ -6,12 +6,22 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import decode_token, parse_uuid_sub
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.user_repo import get_user_by_id
 
 security = HTTPBearer(auto_error=False)
+
+
+def require_schedule_active() -> None:
+    """Block series/sessions/packs/booking routes while Estudio schedule is paused."""
+    if settings.studio_schedule_paused:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Agenda y paquetes del Estudio están en reconstrucción.",
+        )
 
 
 def get_db_session() -> Session:

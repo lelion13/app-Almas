@@ -59,9 +59,9 @@ In production, the configured `MP_REDIRECT_URI` MUST be reachable through the pu
 
 ### Requirement: Migrations
 
-Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`012`**.
+Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`014`**.
 
-Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_room_hours` + `008_room_hour_slots` + `009_room_share_space` + `010_ensure_room_share_space` + `011_activity_rooms` + `012_system_backups`.
+Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_room_hours` + `008_room_hour_slots` + `009_room_share_space` + `010_ensure_room_share_space` + `011_activity_rooms` + `012_system_backups` + `013_instructor_activities` + `014_align_instructor_emails`.
 
 `010` MUST be idempotent: add `studio_rooms.shares_space_with_room_id` if missing; drop leftover `space_id` / `studio_spaces` from the abandoned Espacios design. Operators MUST NOT assume stamp `009` means the share-space column exists (revision file was rewritten in place).
 
@@ -69,17 +69,34 @@ Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_r
 
 `012` MUST create `system_backup_config` and `system_backup_logs` tables.
 
-Legacy note: if a restored dump still reports an orphan revision `003` from a **discarded** earlier MP reconciliation attempt that is **not** the current `003_mp_accounts` in the repo, operators MUST clean that revision before upgrade (drop orphan MP tables if present and stamp to a known good revision). New installs MUST only apply migrations present in the shipped image.
+`013` MUST create `studio_instructor_activities` (`instructor_id`, `activity_id`, unique pair). It MUST NOT invent activity links for existing instructors.
 
+`014` MUST align `studio_instructors.email` to linked `users.email` where `user_id` is set and values diverge (data repair only; no schema change). if a restored dump still reports an orphan revision `003` from a **discarded** earlier MP reconciliation attempt that is **not** the current `003_mp_accounts` in the repo, operators MUST clean that revision before upgrade (drop orphan MP tables if present and stamp to a known good revision). New installs MUST only apply migrations present in the shipped image.
+
+#### Scenario: Fresh deploy includes instructor activities junction
+- **GIVEN** an empty database and images containing studio migrations
+- **WHEN** backend starts with migrate enabled
+- **THEN** Alembic MUST reach head `014` including `studio_instructor_activities`
+
+#### Scenario: Upgrade from 012 leaves old instructors unlinked
+- **GIVEN** a database at head `012` with existing `studio_instructors` rows
+- **WHEN** `013` applies
+- **THEN** those instructors MUST have zero junction rows until an admin assigns activities
+
+#### Scenario: Upgrade 014 aligns divergent instructor emails
+- **GIVEN** an instructor with `user_id` and profile email different from linked User email
+- **WHEN** `014` applies
+- **THEN** `studio_instructors.email` MUST match `users.email`
+
+Legacy note:
+- **GIVEN** an empty database and images containing studio migrations
+- **WHEN** backend starts with migrate enabled
 #### Scenario: Fresh deploy includes backup tables
 - **GIVEN** an empty database and images containing migrations
 - **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST reach head `012` including `system_backup_config` and `system_backup_logs`
+- **THEN** Alembic MUST reach head `014` including `system_backup_config` and `system_backup_logs`
 
 #### Scenario: Fresh deploy includes activity rooms
-- **GIVEN** an empty database and images containing studio migrations
-- **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST reach head `012` including `studio_activity_rooms`
 
 #### Scenario: Upgrade from 010 leaves old activities unlinked
 - **GIVEN** a database at head `010` with existing `studio_activities` rows
@@ -89,7 +106,7 @@ Legacy note: if a restored dump still reports an orphan revision `003` from a **
 #### Scenario: Fresh deploy applies studio room hours
 - **GIVEN** an empty database and images containing studio migrations
 - **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST reach head `012` including room duration, multi-slot hours, `shares_space_with_room_id`, and `studio_activity_rooms`
+- **THEN** Alembic MUST reach head `014` including room duration, multi-slot hours, `shares_space_with_room_id`, `studio_activity_rooms`, `studio_instructor_activities`, and aligned instructor emails
 
 #### Scenario: Upgrade from rewritten 009 stamp
 - **GIVEN** a database with `alembic_version = 009` and `studio_rooms.space_id` but no `shares_space_with_room_id`

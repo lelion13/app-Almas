@@ -7,8 +7,8 @@ type Item = Record<string, unknown> & { id: string };
 /** Local draft slot; `key` is client-only until saved. */
 type HourSlot = { key: string; weekday: number; open_time: string; close_time: string };
 type Tab =
-  | "sites" | "rooms" | "activities" | "instructors" | "students" | "series"
-  | "sessions" | "holidays" | "products" | "packs" | "audit";
+  | "sites" | "rooms" | "activities" | "instructors" | "students"
+  | "holidays" | "audit";
 
 const WEEKDAY_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -33,9 +33,8 @@ function newSlotKey() {
 
 const TABS: Array<[Tab, string]> = [
   ["sites", "Sedes"], ["rooms", "Salones"], ["activities", "Actividades"],
-  ["instructors", "Instructores"], ["students", "Alumnos"], ["series", "Series"],
-  ["sessions", "Sesiones"], ["holidays", "Feriados"], ["products", "Productos"],
-  ["packs", "Paquetes"], ["audit", "Auditoría"],
+  ["instructors", "Instructores"], ["students", "Alumnos"],
+  ["holidays", "Feriados"], ["audit", "Auditoría"],
 ];
 
 const inputClass = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
@@ -119,11 +118,7 @@ export default function StudioAdminPage() {
       activities: "/api/v1/studio/activities",
       instructors: "/api/v1/studio/instructors",
       students: "/api/v1/studio/students",
-      series: "/api/v1/studio/series",
-      sessions: "/api/v1/studio/sessions",
       holidays: "/api/v1/studio/holidays",
-      products: "/api/v1/studio/pack-products",
-      packs: query("/api/v1/studio/student-packs", { student_id: id("packStudent") }),
       audit: "/api/v1/studio/audit",
     };
     if (paths[next]) await load(next, paths[next]!);
@@ -134,8 +129,7 @@ export default function StudioAdminPage() {
     void Promise.all([
       load("sites", "/api/v1/studio/sites"), load("activities", "/api/v1/studio/activities"),
       load("instructors", "/api/v1/studio/instructors"), load("students", "/api/v1/studio/students"),
-      load("products", "/api/v1/studio/pack-products"), load("roomsAll", "/api/v1/studio/rooms"),
-      load("packs", "/api/v1/studio/student-packs"), load("series", "/api/v1/studio/series"),
+      load("roomsAll", "/api/v1/studio/rooms"),
     ]);
   }, []);
 
@@ -184,22 +178,7 @@ export default function StudioAdminPage() {
       if (room.active === false) return false;
       return true;
     });
-  const activeRooms = list("roomsAll").filter((room) => room.active !== false);
   const activeSites = list("sites").filter((site) => site.active !== false);
-  const activeActivities = list("activities").filter((activity) => activity.active !== false);
-  const roomsForSeries = () => {
-    const siteId = value("seriesSite");
-    const activityId = value("seriesActivity");
-    const activity = list("activities").find((item) => item.id === activityId);
-    const linked = new Set(
-      Array.isArray(activity?.room_ids) ? (activity.room_ids as string[]).map(String) : [],
-    );
-    return activeRooms.filter((room) => {
-      if (siteId && String(room.site_id) !== siteId) return false;
-      if (activityId && !linked.has(room.id)) return false;
-      return true;
-    });
-  };
   const activityRoomLabels = (activity: Item) => {
     const ids = Array.isArray(activity.room_ids) ? (activity.room_ids as string[]) : [];
     if (!ids.length) return "sin salones (asigná en Editar)";
@@ -223,10 +202,7 @@ export default function StudioAdminPage() {
       return activity ? asText(activity.name) : asText(aid);
     }).join(" · ");
   };
-  const selects = {
-    site: activeSites, room: list("roomsAll"), activity: activeActivities,
-    instructor: list("instructors"), student: list("students"), product: list("products"), pack: list("packs"),
-  };
+  const selects = { site: activeSites };
   const allSites = list("sites");
 
   function closeEditActivity() {
@@ -934,7 +910,7 @@ export default function StudioAdminPage() {
               <div className="border-b border-slate-100 p-4">
                 <h3 className="text-lg font-semibold text-slate-900">Horarios · {asText(hoursRoom.name)}</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Podés cargar varias franjas el mismo día (p. ej. mañana y tarde). Si este salón comparte espacio con otro, no pueden pisarse. Sin franjas no se pueden crear series.
+                  Podés cargar varias franjas el mismo día (p. ej. mañana y tarde). Si este salón comparte espacio con otro, no pueden pisarse.
                 </p>
                 {modalError && (
                   <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
@@ -1197,106 +1173,9 @@ export default function StudioAdminPage() {
       </section>}
       {tab === "students" && <ProfileSection title="Alumno" endpoint="students" fields={["full_name", "email", "login_email", "password", "document_id", "emergency_contact", "emergency_phone", "medical_notes"]} items={list("students")} values={values} setValue={setValue} submit={submit} form={form} />}
 
-      {tab === "series" && <section className="space-y-4">
-        {form((e) => {
-          e.preventDefault();
-          const rawTime = value("seriesTime");
-          const start_time = rawTime.length === 5 ? `${rawTime}:00` : rawTime;
-          void submit("/api/v1/studio/series", {
-            site_id: id("seriesSite"), room_id: id("seriesRoom"), activity_id: id("seriesActivity"),
-            instructor_id: id("seriesInstructor"), weekday: Number(value("seriesWeekday")), start_time,
-            duration_minutes: Number(value("seriesDuration")), capacity: Number(value("seriesCapacity")),
-            level: value("seriesLevel") || "inicial",
-          }, "Serie creada.");
-        }, <>
-          <Select
-            label="Sede"
-            field="seriesSite"
-            items={selects.site}
-            onChangeExtra={(nextSite) => {
-              const activity = list("activities").find((item) => item.id === value("seriesActivity"));
-              const linked = new Set(
-                Array.isArray(activity?.room_ids) ? (activity.room_ids as string[]).map(String) : [],
-              );
-              const currentRoom = list("roomsAll").find((room) => room.id === value("seriesRoom"));
-              if (!currentRoom) return;
-              if (String(currentRoom.site_id) !== nextSite) {
-                setValue("seriesRoom", "");
-                return;
-              }
-              if (value("seriesActivity") && !linked.has(currentRoom.id)) setValue("seriesRoom", "");
-            }}
-          />
-          <Select
-            label="Actividad"
-            field="seriesActivity"
-            items={selects.activity}
-            onChangeExtra={(nextActivityId) => {
-              const activity = list("activities").find((item) => item.id === nextActivityId);
-              const linked = new Set(
-                Array.isArray(activity?.room_ids) ? (activity.room_ids as string[]).map(String) : [],
-              );
-              const siteId = value("seriesSite");
-              const allowed = new Set(
-                activeRooms
-                  .filter((room) => {
-                    if (siteId && String(room.site_id) !== siteId) return false;
-                    if (nextActivityId && !linked.has(room.id)) return false;
-                    return true;
-                  })
-                  .map((room) => room.id),
-              );
-              if (value("seriesRoom") && !allowed.has(value("seriesRoom"))) setValue("seriesRoom", "");
-            }}
-          />
-          <Select
-            label="Salón"
-            field="seriesRoom"
-            items={roomsForSeries()}
-            required={Boolean(value("seriesSite") && value("seriesActivity"))}
-          />
-          {value("seriesSite") && value("seriesActivity") && roomsForSeries().length === 0 && (
-            <p className="sm:col-span-2 text-sm text-amber-800">
-              No hay salones compatibles (sede ∩ salones de la actividad). Asigná salones en <strong>Actividades</strong> o elegí otra combinación.
-            </p>
-          )}
-          <Select label="Instructor" field="seriesInstructor" items={selects.instructor} />
-          <Field label="Día (0 domingo · 6 sábado)" type="number" min="0" max="6" value={value("seriesWeekday")} onChange={(e) => setValue("seriesWeekday", e.target.value)} required />
-          <Field label="Hora" type="time" step="1" value={value("seriesTime")} onChange={(e) => setValue("seriesTime", e.target.value)} required />
-          <Field label="Duración (minutos)" type="number" min="1" value={value("seriesDuration")} onChange={(e) => setValue("seriesDuration", e.target.value)} required />
-          <Field label="Capacidad" type="number" min="1" value={value("seriesCapacity")} onChange={(e) => setValue("seriesCapacity", e.target.value)} required />
-          <Field label="Nivel" value={value("seriesLevel")} onChange={(e) => setValue("seriesLevel", e.target.value)} placeholder="inicial" />
-        </>)}
-        <List items={list("series")} fields={["weekday", "start_time", "duration_minutes", "capacity", "level", "active"]} />
-        {form((e) => {
-          e.preventDefault();
-          void submit("/api/v1/studio/fixed-enrollments", {
-            student_id: id("fixedStudent"), series_id: id("fixedSeries"), pack_id: id("fixedPack"),
-          }, "Inscripción fija creada.", "series");
-        }, <><Select label="Alumno (inscripción fija)" field="fixedStudent" items={selects.student} /><Select label="Serie" field="fixedSeries" items={list("series")} /><Select label="Paquete" field="fixedPack" items={selects.pack} /></>)}
-      </section>}
-
-      {tab === "sessions" && <section className="space-y-4">
-        <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-end"><Field label="Semanas a expandir" type="number" min="1" max="52" value={value("weeksAhead") || "4"} onChange={(e) => setValue("weeksAhead", e.target.value)} /><button type="button" className={buttonClass} disabled={busy} onClick={() => void submit(`/api/v1/studio/expand-sessions?weeks_ahead=${encodeURIComponent(value("weeksAhead") || "4")}`, undefined, "Sesiones expandidas.", "sessions")}>Expandir sesiones</button></div>
-        <List items={list("sessions")} fields={["session_date", "start_time", "status", "capacity", "instructor_id"]} />
-        {list("sessions").map((session) => <button key={session.id} type="button" className="mr-2 rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50" onClick={() => { if (window.confirm("¿Cancelar esta sesión y sus reservas?")) void submit(`/api/v1/studio/sessions/${session.id}/mass-cancel`, {}, "Sesión cancelada.", "sessions"); }}>Cancelar {asText(session.session_date)} {asText(session.start_time)}</button>)}
-      </section>}
-
       {tab === "holidays" && <section className="space-y-4">
         {form((e) => { e.preventDefault(); void submit("/api/v1/studio/holidays", { holiday_date: value("holidayDate"), name: value("holidayName"), site_id: id("holidaySite") || null }, "Feriado creado."); }, <><Field label="Fecha" type="date" value={value("holidayDate")} onChange={(e) => setValue("holidayDate", e.target.value)} required /><Field label="Nombre" value={value("holidayName")} onChange={(e) => setValue("holidayName", e.target.value)} required /><Select label="Sede (opcional)" field="holidaySite" items={selects.site} required={false} /></>)}
         <List items={list("holidays")} fields={["holiday_date", "name", "site_id"]} />
-      </section>}
-
-      {tab === "products" && <section className="space-y-4">
-        {form((e) => { e.preventDefault(); void submit("/api/v1/studio/pack-products", { name: value("productName"), class_count: Number(value("productClasses")), validity_days: Number(value("productValidity")), price: value("productPrice") ? Number(value("productPrice")) : null, is_trial: value("productTrial") === "on" }, "Producto creado."); }, <><Field label="Nombre" value={value("productName")} onChange={(e) => setValue("productName", e.target.value)} required /><Field label="Cantidad de clases" type="number" min="1" value={value("productClasses")} onChange={(e) => setValue("productClasses", e.target.value)} required /><Field label="Vigencia (días)" type="number" min="1" value={value("productValidity")} onChange={(e) => setValue("productValidity", e.target.value)} required /><Field label="Precio (opcional)" type="number" min="0" step="0.01" value={value("productPrice")} onChange={(e) => setValue("productPrice", e.target.value)} /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={value("productTrial") === "on"} onChange={(e) => setValue("productTrial", e.target.checked ? "on" : "")} /> Producto de prueba</label></>)}
-        <List items={list("products")} fields={["name", "class_count", "validity_days", "price", "is_trial", "active"]} />
-      </section>}
-
-      {tab === "packs" && <section className="space-y-4">
-        {form((e) => { e.preventDefault(); void submit("/api/v1/studio/student-packs", { student_id: id("assignStudent"), product_id: id("assignProduct"), starts_on: value("packStart"), scope: value("packScope") || "all_sedes", site_id: value("packScope") === "one_sede" ? id("packSite") : null, payment_method: value("paymentMethod") || "efectivo", payment_status: value("paymentStatus") || "pagado" }, "Paquete asignado.", "packs"); }, <><Select label="Alumno" field="assignStudent" items={selects.student} /><Select label="Producto" field="assignProduct" items={selects.product} /><Field label="Inicio" type="date" value={value("packStart")} onChange={(e) => setValue("packStart", e.target.value)} required /><label className="space-y-1 text-sm"><span>Alcance</span><select className={inputClass} value={value("packScope") || "all_sedes"} onChange={(e) => setValue("packScope", e.target.value)}><option value="all_sedes">Todas las sedes</option><option value="one_sede">Una sede</option></select></label>{value("packScope") === "one_sede" && <Select label="Sede" field="packSite" items={selects.site} />}<Field label="Medio de pago" value={value("paymentMethod")} onChange={(e) => setValue("paymentMethod", e.target.value)} placeholder="efectivo" /><Field label="Estado de pago" value={value("paymentStatus")} onChange={(e) => setValue("paymentStatus", e.target.value)} placeholder="pagado" /></>)}
-        <div className="flex gap-2"><select className={inputClass} value={value("packStudent")} onChange={(e) => setValue("packStudent", e.target.value)}><option value="">Todos los alumnos</option>{selects.student.map((student) => <option key={student.id} value={student.id}>{asText(student.full_name)}</option>)}</select><button type="button" className="rounded-lg border px-3 text-sm" onClick={() => void loadTab()}>Buscar</button></div>
-        <List items={list("packs")} fields={["student_id", "product_id", "remaining_credits", "starts_on", "expires_on", "scope"]} />
-        {form((e) => { e.preventDefault(); void submit("/api/v1/studio/transfer-credits", { source_pack_id: id("sourcePack"), target_pack_id: id("targetPack"), credits: Number(value("transferCredits")) }, "Créditos transferidos.", "packs"); }, <><Select label="Paquete origen" field="sourcePack" items={selects.pack} /><Select label="Paquete destino" field="targetPack" items={selects.pack} /><Field label="Créditos" type="number" min="1" value={value("transferCredits")} onChange={(e) => setValue("transferCredits", e.target.value)} required /></>)}
       </section>}
 
       {tab === "audit" && <List items={list("audit")} fields={["action", "entity_type", "entity_id", "created_at", "actor_user_id"]} empty="No hay eventos de auditoría." />}

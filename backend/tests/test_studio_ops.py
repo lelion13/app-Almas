@@ -177,3 +177,22 @@ def test_student_response_from_orm():
     parsed = StudentResponse.model_validate(student)
     assert parsed.full_name == "Ana"
     assert parsed.login_email is None
+
+
+def test_require_schedule_active_raises_when_paused(monkeypatch):
+    from fastapi import HTTPException
+    from app.core import deps
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "studio_schedule_paused", True)
+    with pytest.raises(HTTPException) as exc:
+        deps.require_schedule_active()
+    assert exc.value.status_code == 410
+
+
+def test_require_schedule_active_ok_when_unpaused(monkeypatch):
+    from app.core import deps
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "studio_schedule_paused", False)
+    assert deps.require_schedule_active() is None

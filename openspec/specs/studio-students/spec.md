@@ -5,9 +5,28 @@ Student profiles, fixed and mobile booking, waitlist confirm, attendance, and cr
 
 ## Requirements
 
+### Requirement: Booking and waitlist pause
+
+While `STUDIO_SCHEDULE_PAUSED` is enabled, fixed-enrollment, booking cancel (admin), waitlist, attendance, and alumno portal booking APIs (`/me/packs`, `/me/sessions`, `/me/book`, `/me/bookings`, cancel, waitlist confirm) MUST respond with **410 Gone**.
+
+Student profile CRUD (admin Estudio → Alumnos) MUST remain available.
+
+Alumno UI (`/mis-clases` and RoleIndex for `alumno`) MUST show a reconstruction stub and MUST NOT call paused `/me/*` booking APIs.
+
+#### Scenario: Alumno portal stub
+- **GIVEN** an authenticated alumno and pause enabled
+- **WHEN** they open Mis clases
+- **THEN** they MUST see a reconstruction message
+- **AND** the page MUST NOT call `/me/book` or related paused endpoints
+
+#### Scenario: Student catalog still works
+- **GIVEN** pause enabled
+- **WHEN** admin creates or lists students
+- **THEN** the response MUST be `200`
+
 ### Requirement: Student profiles
 
-Admin MUST CRUD students with personal data, optional contact/document/emergency/medical fields. A student MAY be linked to a User with role `alumno` when `login_email` + `password` are provided together at create.
+Admin MUST CRUD students with personal data, optional contact/document/emergency/medical fields. A student MAY be linked to a User with role `alumno` when `login_email` + `password` are provided together at create. `StudentResponse` MUST NOT inherit instructor-only fields (e.g. `activity_ids`); student list endpoints MUST serialize via a dedicated student response builder.
 
 ### Requirement: Fixed and mobile enrollment
 

@@ -67,12 +67,17 @@ The system MUST support studio-scoped portal access via role:
 
 ### Requirement: Admin creates login with temporary password
 
-Admin MUST be able to create a User linked to an Instructor or Student profile with a password supplied in the same create request (bcrypt-hashed). `login_email` and `password` MUST be supplied together (both or neither). The system MUST NOT log or return the password after create (admin sets it once in the form). Password recovery UI remains OUT OF SCOPE.
+Admin MUST be able to create a User linked to a profile with a password supplied in the same request (bcrypt-hashed). **Students** MUST use `login_email` + `password` together (both or neither). **Instructors** MUST use `email` + optional `password` on `InstructorCreate`/`InstructorPatch` (MUST NOT use `login_email` on instructor endpoints). The system MUST NOT log or return the password after create (admin sets it once in the form). Password recovery UI remains OUT OF SCOPE.
 
 #### Scenario: Create alumno user
 - **GIVEN** an admin creating a student with login
-- **WHEN** the create succeeds
+- **WHEN** the create succeeds with `login_email` and `password`
 - **THEN** a User with role `alumno` MUST exist linked to that student and password MUST be stored as bcrypt hash only
+
+#### Scenario: Create instructor user from single email
+- **GIVEN** an admin creating an instructor with `email` and `password`
+- **WHEN** the create succeeds
+- **THEN** a User with role `instructor` MUST exist with the same email linked via `user_id`
 
 ### Requirement: Frontend session
 

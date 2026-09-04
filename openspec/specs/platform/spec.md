@@ -29,6 +29,17 @@ New UI MUST use pages under `frontend/src/pages`, shared API helper `services/ap
 
 Protected non-public API routes MUST require JWT. Passwords MUST be bcrypt-hashed. Secrets MUST come from environment variables. Failures MUST avoid user enumeration where applicable (login). MP OAuth tokens MUST be Fernet-encrypted at rest and MUST NEVER appear in logs or API list responses.
 
+### Requirement: Studio schedule pause flag
+
+The backend MUST read `STUDIO_SCHEDULE_PAUSED` from environment (boolean; default **true**). When true, paused studio schedule/pack/booking routes MUST return 410. When false, previous behavior MUST resume without schema changes.
+
+`.env.example` / `.env.prod.example` MUST document the variable.
+
+#### Scenario: Flag off restores APIs
+- **GIVEN** `STUDIO_SCHEDULE_PAUSED=false`
+- **WHEN** admin calls `GET /api/v1/studio/series`
+- **THEN** the response MUST NOT be `410` solely due to the pause gate
+
 ### Requirement: Spec-driven changes
 
 Behavioral changes SHOULD go through OpenSpec (`openspec/changes/{name}/`) and merge into `openspec/specs/{domain}/spec.md` on archive. Domains:

@@ -1,0 +1,6 @@
+change: studio-instructors-edit
+status: archived
+archived_at: 2026-09-02
+alembic_head: "014"
+verify: pass
+manual_vps: pass

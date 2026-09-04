@@ -45,6 +45,8 @@ class Settings(BaseSettings):
         default="http://localhost:5173/conciliacion",
         validation_alias="MP_OAUTH_FRONTEND_REDIRECT",
     )
+    # When true, series/sessions/packs/booking portal APIs return 410 (rebuild pause).
+    studio_schedule_paused: bool = Field(default=True, validation_alias="STUDIO_SCHEDULE_PAUSED")
 
     @property
     def is_production(self) -> bool:

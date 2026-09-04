@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.deps import AdminOnly, AdminOrInstructor, AlumnoOnly, InstructorOnly, get_db
+from app.core.deps import AdminOnly, AdminOrInstructor, AlumnoOnly, InstructorOnly, get_db, require_schedule_active
 from app.models.studio import (
     Booking, ClassSeries, PackProduct, StudentPack, StudioActivity, StudioAuditLog,
     StudioHoliday, StudioInstructor, StudioRoom, StudioSite, StudioStudent, WaitlistEntry,
@@ -27,6 +27,7 @@ from app.schemas.studio import (
 from app.services import studio_service as service
 
 router = APIRouter()
+_paused = [Depends(require_schedule_active)]
 
 
 def _list(db: Session, model, active_only: bool = False):
@@ -155,33 +156,33 @@ def delete_student(student_id: UUID, _admin: AdminOnly, db: Session = Depends(ge
 
 
 # Admin: schedule
-@router.get("/series", response_model=list[SeriesResponse])
+@router.get("/series", response_model=list[SeriesResponse], dependencies=_paused)
 def list_series(_admin: AdminOnly, db: Session = Depends(get_db)):
     return _list(db, ClassSeries)
 
 
-@router.post("/series", response_model=SeriesResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/series", response_model=SeriesResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
 def create_series(body: SeriesCreate, _admin: AdminOnly, db: Session = Depends(get_db)):
     return service.create_series(db, body.model_dump())
 
 
-@router.patch("/series/{series_id}", response_model=SeriesResponse)
+@router.patch("/series/{series_id}", response_model=SeriesResponse, dependencies=_paused)
 def patch_series(series_id: UUID, body: SeriesPatch, _admin: AdminOnly, db: Session = Depends(get_db)):
     # Scheduling fields are immutable in MVP to avoid leaving materialized sessions inconsistent.
     return service.update_entity(db, service._get(db, ClassSeries, series_id, "Series"), body.model_dump(exclude_unset=True))
 
 
-@router.delete("/series/{series_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/series/{series_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_paused)
 def delete_series(series_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db)):
     service.deactivate_entity(db, service._get(db, ClassSeries, series_id, "Series"))
 
 
-@router.post("/expand-sessions", response_model=list[SessionResponse])
+@router.post("/expand-sessions", response_model=list[SessionResponse], dependencies=_paused)
 def expand_sessions(weeks_ahead: int, _admin: AdminOnly, db: Session = Depends(get_db)):
     return service.expand_sessions(db, weeks_ahead)
 
 
-@router.get("/sessions", response_model=list[SessionResponse])
+@router.get("/sessions", response_model=list[SessionResponse], dependencies=_paused)
 def list_sessions(
     _admin: AdminOnly, db: Session = Depends(get_db), start_date: date | None = None,
     end_date: date | None = None, site_id: UUID | None = None, instructor_id: UUID | None = None,
@@ -191,7 +192,7 @@ def list_sessions(
                                  instructor_id=instructor_id, status_value=session_status)
 
 
-@router.post("/sessions/{session_id}/mass-cancel", response_model=SessionResponse)
+@router.post("/sessions/{session_id}/mass-cancel", response_model=SessionResponse, dependencies=_paused)
 def mass_cancel_session(session_id: UUID, admin: AdminOnly, db: Session = Depends(get_db)):
     return service.mass_cancel_session(db, session_id, admin.id)
 
@@ -216,27 +217,27 @@ def delete_holiday(holiday_id: UUID, _admin: AdminOnly, db: Session = Depends(ge
 
 
 # Admin: packs and enrollment
-@router.get("/pack-products", response_model=list[PackProductResponse])
+@router.get("/pack-products", response_model=list[PackProductResponse], dependencies=_paused)
 def list_pack_products(_admin: AdminOnly, db: Session = Depends(get_db)):
     return _list(db, PackProduct)
 
 
-@router.post("/pack-products", response_model=PackProductResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/pack-products", response_model=PackProductResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
 def create_pack_product(body: PackProductCreate, _admin: AdminOnly, db: Session = Depends(get_db)):
     return service.create_pack_product(db, body.model_dump())
 
 
-@router.patch("/pack-products/{product_id}", response_model=PackProductResponse)
+@router.patch("/pack-products/{product_id}", response_model=PackProductResponse, dependencies=_paused)
 def patch_pack_product(product_id: UUID, body: PackProductPatch, _admin: AdminOnly, db: Session = Depends(get_db)):
     return service.update_entity(db, service._get(db, PackProduct, product_id, "Pack product"), body.model_dump(exclude_unset=True))
 
 
-@router.delete("/pack-products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/pack-products/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_paused)
 def delete_pack_product(product_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db)):
     service.deactivate_entity(db, service._get(db, PackProduct, product_id, "Pack product"))
 
 
-@router.get("/student-packs", response_model=list[StudentPackResponse])
+@router.get("/student-packs", response_model=list[StudentPackResponse], dependencies=_paused)
 def list_student_packs(_admin: AdminOnly, db: Session = Depends(get_db), student_id: UUID | None = None):
     query = select(StudentPack)
     if student_id:
@@ -244,12 +245,12 @@ def list_student_packs(_admin: AdminOnly, db: Session = Depends(get_db), student
     return db.scalars(query).all()
 
 
-@router.post("/student-packs", response_model=StudentPackResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/student-packs", response_model=StudentPackResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
 def assign_pack(body: PackAssign, admin: AdminOnly, db: Session = Depends(get_db)):
     return service.assign_pack(db, body.model_dump(), admin.id)
 
 
-@router.post("/transfer-credits", response_model=TransferCreditsResponse)
+@router.post("/transfer-credits", response_model=TransferCreditsResponse, dependencies=_paused)
 def transfer_credits(body: TransferCredits, admin: AdminOnly, db: Session = Depends(get_db)):
     source_pack, target_pack = service.transfer_credits(
         db, body.source_pack_id, body.target_pack_id, body.credits, admin.id
@@ -257,17 +258,17 @@ def transfer_credits(body: TransferCredits, admin: AdminOnly, db: Session = Depe
     return TransferCreditsResponse(source_pack=source_pack, target_pack=target_pack)
 
 
-@router.post("/fixed-enrollments", response_model=FixedEnrollmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/fixed-enrollments", response_model=FixedEnrollmentResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
 def create_fixed_enrollment(body: FixedEnrollmentCreate, admin: AdminOnly, db: Session = Depends(get_db)):
     return service.create_fixed_enrollment(db, body.student_id, body.series_id, body.pack_id, admin.id)
 
 
-@router.post("/bookings/{booking_id}/cancel", response_model=BookingResponse)
+@router.post("/bookings/{booking_id}/cancel", response_model=BookingResponse, dependencies=_paused)
 def admin_cancel_booking(booking_id: UUID, admin: AdminOnly, db: Session = Depends(get_db)):
     return service.cancel_booking(db, booking_id, admin.id)
 
 
-@router.get("/waitlist", response_model=list[WaitlistResponse])
+@router.get("/waitlist", response_model=list[WaitlistResponse], dependencies=_paused)
 def list_waitlist(_admin: AdminOnly, db: Session = Depends(get_db), session_id: UUID | None = None):
     query = select(WaitlistEntry).order_by(WaitlistEntry.position)
     if session_id:
@@ -275,12 +276,12 @@ def list_waitlist(_admin: AdminOnly, db: Session = Depends(get_db), session_id: 
     return db.scalars(query).all()
 
 
-@router.post("/waitlist/{waitlist_id}/confirm", response_model=BookingResponse)
+@router.post("/waitlist/{waitlist_id}/confirm", response_model=BookingResponse, dependencies=_paused)
 def admin_confirm_waitlist(waitlist_id: UUID, body: WaitlistConfirm, admin: AdminOnly, db: Session = Depends(get_db)):
     return service.waitlist_confirm(db, waitlist_id, body.pack_id, admin.id)
 
 
-@router.post("/attendance", response_model=AttendanceResponse)
+@router.post("/attendance", response_model=AttendanceResponse, dependencies=_paused)
 def admin_attendance(body: AttendanceSet, admin: AdminOnly, db: Session = Depends(get_db)):
     return service.set_attendance(db, body.booking_id, body.status, admin.id)
 
@@ -301,13 +302,13 @@ def list_audit(_admin: AdminOnly, db: Session = Depends(get_db), limit: int = 10
 
 
 # Instructor portal
-@router.get("/instructor/sessions", response_model=list[SessionResponse])
+@router.get("/instructor/sessions", response_model=list[SessionResponse], dependencies=_paused)
 def instructor_sessions(instructor_user: InstructorOnly, db: Session = Depends(get_db)):
     instructor = service.get_instructor_by_user(db, instructor_user.id)
     return service.list_sessions(db, instructor_id=instructor.id, start_date=date.today())
 
 
-@router.get("/instructor/sessions/{session_id}/bookings", response_model=list[BookingResponse])
+@router.get("/instructor/sessions/{session_id}/bookings", response_model=list[BookingResponse], dependencies=_paused)
 def instructor_bookings(session_id: UUID, instructor_user: InstructorOnly, db: Session = Depends(get_db)):
     instructor = service.get_instructor_by_user(db, instructor_user.id)
     session = service._get(db, service.ClassSession, session_id, "Session")
@@ -316,7 +317,7 @@ def instructor_bookings(session_id: UUID, instructor_user: InstructorOnly, db: S
     return db.scalars(select(Booking).where(Booking.session_id == session_id)).all()
 
 
-@router.post("/instructor/attendance", response_model=AttendanceResponse)
+@router.post("/instructor/attendance", response_model=AttendanceResponse, dependencies=_paused)
 def instructor_attendance(body: AttendanceSet, instructor_user: InstructorOnly, db: Session = Depends(get_db)):
     instructor = service.get_instructor_by_user(db, instructor_user.id)
     booking = service._get(db, Booking, body.booking_id, "Booking")
@@ -327,25 +328,25 @@ def instructor_attendance(body: AttendanceSet, instructor_user: InstructorOnly, 
 
 
 # Alumno portal
-@router.get("/me/packs", response_model=list[StudentPackResponse])
+@router.get("/me/packs", response_model=list[StudentPackResponse], dependencies=_paused)
 def my_packs(alumno: AlumnoOnly, db: Session = Depends(get_db)):
     student = service.get_student_by_user(db, alumno.id)
     return db.scalars(select(StudentPack).where(StudentPack.student_id == student.id)).all()
 
 
-@router.get("/me/sessions", response_model=list[SessionResponse])
+@router.get("/me/sessions", response_model=list[SessionResponse], dependencies=_paused)
 def my_available_sessions(alumno: AlumnoOnly, db: Session = Depends(get_db), site_id: UUID | None = None):
     service.get_student_by_user(db, alumno.id)
     return service.list_sessions(db, start_date=date.today(), site_id=site_id, status_value="scheduled")
 
 
-@router.post("/me/book", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/me/book", response_model=BookingResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
 def my_book(body: BookingCreate, alumno: AlumnoOnly, db: Session = Depends(get_db)):
     student = service.get_student_by_user(db, alumno.id)
     return service.book_session(db, student.id, body.session_id, body.pack_id, "mobile", alumno.id)
 
 
-@router.post("/me/bookings/{booking_id}/cancel", response_model=BookingResponse)
+@router.post("/me/bookings/{booking_id}/cancel", response_model=BookingResponse, dependencies=_paused)
 def my_cancel_booking(booking_id: UUID, alumno: AlumnoOnly, db: Session = Depends(get_db)):
     student = service.get_student_by_user(db, alumno.id)
     booking = service._get(db, Booking, booking_id, "Booking")
@@ -354,13 +355,13 @@ def my_cancel_booking(booking_id: UUID, alumno: AlumnoOnly, db: Session = Depend
     return service.cancel_booking(db, booking_id, alumno.id)
 
 
-@router.post("/me/waitlist", response_model=WaitlistResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/me/waitlist", response_model=WaitlistResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
 def my_waitlist(body: WaitlistJoin, alumno: AlumnoOnly, db: Session = Depends(get_db)):
     student = service.get_student_by_user(db, alumno.id)
     return service.waitlist_join(db, student.id, body.session_id)
 
 
-@router.post("/me/waitlist/{waitlist_id}/confirm", response_model=BookingResponse)
+@router.post("/me/waitlist/{waitlist_id}/confirm", response_model=BookingResponse, dependencies=_paused)
 def my_confirm_waitlist(waitlist_id: UUID, body: WaitlistConfirm, alumno: AlumnoOnly, db: Session = Depends(get_db)):
     student = service.get_student_by_user(db, alumno.id)
     entry = service._get(db, WaitlistEntry, waitlist_id, "Waitlist entry")
@@ -369,13 +370,13 @@ def my_confirm_waitlist(waitlist_id: UUID, body: WaitlistConfirm, alumno: Alumno
     return service.waitlist_confirm(db, waitlist_id, body.pack_id, alumno.id)
 
 
-@router.get("/me/bookings", response_model=list[BookingResponse])
+@router.get("/me/bookings", response_model=list[BookingResponse], dependencies=_paused)
 def my_bookings(alumno: AlumnoOnly, db: Session = Depends(get_db)):
     student = service.get_student_by_user(db, alumno.id)
     return db.scalars(select(Booking).where(Booking.student_id == student.id).order_by(Booking.created_at.desc())).all()
 
 
-@router.get("/me/waitlist", response_model=list[WaitlistResponse])
+@router.get("/me/waitlist", response_model=list[WaitlistResponse], dependencies=_paused)
 def my_waitlist_entries(alumno: AlumnoOnly, db: Session = Depends(get_db)):
     student = service.get_student_by_user(db, alumno.id)
     return db.scalars(
