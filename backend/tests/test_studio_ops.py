@@ -196,3 +196,30 @@ def test_require_schedule_active_ok_when_unpaused(monkeypatch):
 
     monkeypatch.setattr(settings, "studio_schedule_paused", False)
     assert deps.require_schedule_active() is None
+
+
+def test_room_hours_weekday_from_date_sunday_zero():
+    from app.services.studio_service import room_hours_weekday_from_date
+
+    # 2026-09-06 is Sunday
+    assert room_hours_weekday_from_date(date(2026, 9, 6)) == 0
+    # 2026-09-07 is Monday
+    assert room_hours_weekday_from_date(date(2026, 9, 7)) == 1
+    # 2026-09-12 is Saturday
+    assert room_hours_weekday_from_date(date(2026, 9, 12)) == 6
+
+
+def test_monday_of_week_normalizes():
+    from app.services.studio_service import monday_of_week
+
+    assert monday_of_week(date(2026, 9, 10)) == date(2026, 9, 7)  # Thursday → Monday
+    assert monday_of_week(date(2026, 9, 7)) == date(2026, 9, 7)
+
+
+def test_tile_open_window_by_duration():
+    from app.services.studio_service import tile_open_window
+
+    slots = tile_open_window(time(8, 0), time(10, 0), 60)
+    assert slots == [(time(8, 0), time(9, 0)), (time(9, 0), time(10, 0))]
+    assert tile_open_window(time(8, 0), time(9, 30), 60) == [(time(8, 0), time(9, 0))]
+    assert tile_open_window(time(8, 0), time(8, 30), 60) == []

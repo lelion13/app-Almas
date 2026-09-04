@@ -1,8 +1,8 @@
 # Studio Ops — lecciones y decisiones de implementación
 
 Specs (fuente de verdad): `openspec/specs/studio-*.md`, `auth`, `platform`, `deployment`.  
-Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`, `2026-09-02-studio-instructors-edit/`.  
-Active change: `openspec/changes/studio-schedule-pause/`.
+Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`, `2026-09-02-studio-instructors-edit/`, `2026-09-04-studio-schedule-pause/`.  
+Active change: `openspec/changes/studio-calendar/`.
 
 ## Convivencia de producto
 
@@ -17,6 +17,13 @@ Active change: `openspec/changes/studio-schedule-pause/`.
 - Portales alumno/instructor: stub “en reconstrucción” (sin llamadas a APIs pausadas).
 - Datos y tablas **conservados**. Rollback: `STUDIO_SCHEDULE_PAUSED=false` + redeploy.
 - Rebuild de turnos = change futuro (schedule + entitlement + book como un stack).
+
+## Calendario de disponibilidad (`studio-calendar`)
+
+- Tab **Calendario** (vista semana): franjas = horario abierto del salón mosaicoado por `default_duration_minutes` de cada actividad vinculada; muestra **capacidad** del salón.
+- Filtros en cascada: sede → salones; actividad limita a `room_ids`.
+- API: `GET /api/v1/studio/calendar/availability` (admin; **no** bloqueada por pause).
+- Feriados: día visible atenuado. Solo lectura (reserva después).
 
 ## Modelo de créditos (shipped, en pausa operativa)
 

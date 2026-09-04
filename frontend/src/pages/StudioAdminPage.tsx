@@ -2,12 +2,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import { ApiError, apiFetch } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
+import StudioCalendarPanel from "@/components/StudioCalendarPanel";
 
 type Item = Record<string, unknown> & { id: string };
 /** Local draft slot; `key` is client-only until saved. */
 type HourSlot = { key: string; weekday: number; open_time: string; close_time: string };
 type Tab =
-  | "sites" | "rooms" | "activities" | "instructors" | "students"
+  | "calendar" | "sites" | "rooms" | "activities" | "instructors" | "students"
   | "holidays" | "audit";
 
 const WEEKDAY_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -32,6 +33,7 @@ function newSlotKey() {
 }
 
 const TABS: Array<[Tab, string]> = [
+  ["calendar", "Calendario"],
   ["sites", "Sedes"], ["rooms", "Salones"], ["activities", "Actividades"],
   ["instructors", "Instructores"], ["students", "Alumnos"],
   ["holidays", "Feriados"], ["audit", "Auditoría"],
@@ -67,7 +69,7 @@ function Field({ label, ...props }: React.InputHTMLAttributes<HTMLInputElement> 
 
 export default function StudioAdminPage() {
   const { me } = useAuth();
-  const [tab, setTab] = useState<Tab>("sites");
+  const [tab, setTab] = useState<Tab>("calendar");
   const [data, setData] = useState<Record<string, Item[]>>({});
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -682,6 +684,14 @@ export default function StudioAdminPage() {
       </nav>
       {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {notice && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
+
+      {tab === "calendar" && (
+        <StudioCalendarPanel
+          sites={list("sites")}
+          rooms={list("roomsAll")}
+          activities={list("activities")}
+        />
+      )}
 
       {tab === "sites" && <section className="space-y-4">
         {form((e) => {

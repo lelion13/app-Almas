@@ -462,3 +462,36 @@ class AuditResponse(ORMModel):
     entity_id: str | None
     summary: dict | None
     created_at: datetime
+
+
+class CalendarHolidayInfo(BaseModel):
+    id: UUID
+    name: str
+    site_id: UUID | None = None
+
+
+class CalendarSlot(BaseModel):
+    site_id: UUID
+    site_name: str
+    room_id: UUID
+    room_name: str
+    activity_id: UUID
+    activity_name: str
+    start_time: time
+    end_time: time
+    duration_minutes: int
+    capacity: int
+
+
+class CalendarDay(BaseModel):
+    date: date
+    weekday: int = Field(ge=0, le=6, description="0=Sunday .. 6=Saturday (room-hours convention)")
+    is_holiday: bool
+    holidays: list[CalendarHolidayInfo]
+    slots: list[CalendarSlot]
+
+
+class CalendarAvailabilityResponse(BaseModel):
+    week_start: date
+    week_end: date
+    days: list[CalendarDay]

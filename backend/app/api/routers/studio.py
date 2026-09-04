@@ -14,7 +14,8 @@ from app.models.studio import (
 )
 from app.schemas.studio import (
     ActivityCreate, ActivityPatch, ActivityResponse, AttendanceResponse, AttendanceSet,
-    AuditResponse, BookingCreate, BookingResponse, FixedEnrollmentCreate,
+    AuditResponse, BookingCreate, BookingResponse, CalendarAvailabilityResponse,
+    FixedEnrollmentCreate,
     FixedEnrollmentResponse, HolidayCreate, HolidayResponse, InstructorCreate,
     InstructorPatch, InstructorResponse, PackAssign, PackProductCreate, PackProductPatch,
     PackProductResponse, ProfilePatch, RoomCreate, RoomHoursReplace, RoomHoursResponse,
@@ -91,6 +92,25 @@ def get_room_hours(room_id: UUID, _admin: AdminOnly, db: Session = Depends(get_d
 def put_room_hours(room_id: UUID, body: RoomHoursReplace, _admin: AdminOnly, db: Session = Depends(get_db)):
     slots = service.replace_room_hours(db, room_id, [s.model_dump() for s in body.slots])
     return RoomHoursResponse(room_id=room_id, slots=slots)
+
+
+@router.get("/calendar/availability", response_model=CalendarAvailabilityResponse)
+def calendar_availability(
+    _admin: AdminOnly,
+    db: Session = Depends(get_db),
+    week_start: date | None = None,
+    site_id: UUID | None = None,
+    room_id: UUID | None = None,
+    activity_id: UUID | None = None,
+):
+    """Read-only catalog availability; not gated by STUDIO_SCHEDULE_PAUSED."""
+    return service.build_calendar_availability(
+        db,
+        week_start=week_start,
+        site_id=site_id,
+        room_id=room_id,
+        activity_id=activity_id,
+    )
 
 
 @router.get("/activities", response_model=list[ActivityResponse])

@@ -22,7 +22,15 @@ from app.models.studio import (
     StudioStudent, WaitlistEntry,
 )
 from app.models.user import User
-from app.schemas.studio import ActivityResponse, InstructorResponse, StudentResponse
+from app.schemas.studio import (
+    ActivityResponse,
+    CalendarAvailabilityResponse,
+    CalendarDay,
+    CalendarHolidayInfo,
+    CalendarSlot,
+    InstructorResponse,
+    StudentResponse,
+)
 from app.services.studio_audit import write_audit
 
 
@@ -353,6 +361,154 @@ def replace_room_hours(db: Session, room_id: UUID, slots: list[dict[str, Any]]) 
         )
     db.commit()
     return get_room_hours(db, room_id)
+
+
+def room_hours_weekday_from_date(day: date) -> int:
+    """Map civil date to room-hours weekday (0=Sunday .. 6=Saturday)."""
+    return (day.weekday() + 1) % 7
+
+
+def monday_of_week(day: date) -> date:
+    """ISO-style week start Monday containing `day`."""
+    return day - timedelta(days=day.weekday())
+
+
+def tile_open_window(open_t: time, close_t: time, duration_minutes: int) -> list[tuple[time, time]]:
+    """Half-open [open, close) tiled into consecutive slots of `duration_minutes`."""
+    if duration_minutes < 1:
+        return []
+    open_m = _to_minutes(open_t)
+    close_m = _to_minutes(close_t)
+    if close_m <= open_m:
+        return []
+    slots: list[tuple[time, time]] = []
+    start_m = open_m
+    while start_m + duration_minutes <= close_m:
+        end_m = start_m + duration_minutes
+        slots.append(
+            (
+                time(hour=start_m // 60, minute=start_m % 60),
+                time(hour=end_m // 60, minute=end_m % 60),
+            )
+        )
+        start_m = end_m
+    return slots
+
+
+def build_calendar_availability(
+    db: Session,
+    *,
+    week_start: date | None = None,
+    site_id: UUID | None = None,
+    room_id: UUID | None = None,
+    activity_id: UUID | None = None,
+) -> CalendarAvailabilityResponse:
+    """Catalog availability for one Mon–Sun week (not series/sessions)."""
+    start = monday_of_week(week_start or date.today())
+    end = start + timedelta(days=6)
+
+    rooms_q = select(StudioRoom).where(StudioRoom.active.is_(True))
+    if site_id is not None:
+        rooms_q = rooms_q.where(StudioRoom.site_id == site_id)
+    if room_id is not None:
+        rooms_q = rooms_q.where(StudioRoom.id == room_id)
+    rooms = list(db.scalars(rooms_q).all())
+    site_ids = {r.site_id for r in rooms}
+    if site_id is not None:
+        site_ids.add(site_id)
+    sites = {
+        s.id: s
+        for s in (
+            db.scalars(select(StudioSite).where(StudioSite.id.in_(site_ids))).all() if site_ids else []
+        )
+    }
+    # Drop rooms whose site is inactive
+    rooms = [r for r in rooms if sites.get(r.site_id) and sites[r.site_id].active]
+    room_ids = [r.id for r in rooms]
+    rooms_by_id = {r.id: r for r in rooms}
+
+    activities_q = select(StudioActivity).where(StudioActivity.active.is_(True))
+    if activity_id is not None:
+        activities_q = activities_q.where(StudioActivity.id == activity_id)
+    activities = list(db.scalars(activities_q).all())
+    activities_by_id = {a.id: a for a in activities}
+
+    links: list[tuple[UUID, UUID]] = []
+    if room_ids and activities_by_id:
+        link_rows = db.scalars(
+            select(StudioActivityRoom).where(
+                StudioActivityRoom.room_id.in_(room_ids),
+                StudioActivityRoom.activity_id.in_(list(activities_by_id.keys())),
+            )
+        ).all()
+        links = [(row.room_id, row.activity_id) for row in link_rows]
+
+    hours_by_room: dict[UUID, list[StudioRoomHours]] = {rid: [] for rid in room_ids}
+    if room_ids:
+        for row in db.scalars(select(StudioRoomHours).where(StudioRoomHours.room_id.in_(room_ids))).all():
+            hours_by_room.setdefault(row.room_id, []).append(row)
+
+    holidays = list(
+        db.scalars(
+            select(StudioHoliday).where(StudioHoliday.holiday_date.between(start, end))
+        ).all()
+    )
+
+    days: list[CalendarDay] = []
+    for offset in range(7):
+        day = start + timedelta(days=offset)
+        wd = room_hours_weekday_from_date(day)
+        day_holidays = [
+            h
+            for h in holidays
+            if h.holiday_date == day and (h.site_id is None or h.site_id in {r.site_id for r in rooms} or site_id is None or h.site_id == site_id)
+        ]
+        # If filtering by site, only global + that site holidays matter for the marker
+        if site_id is not None:
+            day_holidays = [h for h in day_holidays if h.site_id is None or h.site_id == site_id]
+
+        slots: list[CalendarSlot] = []
+        for rid, aid in links:
+            room = rooms_by_id.get(rid)
+            activity = activities_by_id.get(aid)
+            if room is None or activity is None:
+                continue
+            site = sites.get(room.site_id)
+            if site is None or not site.active:
+                continue
+            duration = int(activity.default_duration_minutes)
+            for hour_row in hours_by_room.get(rid, []):
+                if int(hour_row.weekday) != wd:
+                    continue
+                for start_t, end_t in tile_open_window(hour_row.open_time, hour_row.close_time, duration):
+                    slots.append(
+                        CalendarSlot(
+                            site_id=site.id,
+                            site_name=site.name,
+                            room_id=room.id,
+                            room_name=room.name,
+                            activity_id=activity.id,
+                            activity_name=activity.name,
+                            start_time=start_t,
+                            end_time=end_t,
+                            duration_minutes=duration,
+                            capacity=int(room.capacity),
+                        )
+                    )
+        slots.sort(key=lambda s: (s.start_time, s.site_name, s.room_name, s.activity_name))
+        days.append(
+            CalendarDay(
+                date=day,
+                weekday=wd,
+                is_holiday=bool(day_holidays),
+                holidays=[
+                    CalendarHolidayInfo(id=h.id, name=h.name, site_id=h.site_id) for h in day_holidays
+                ],
+                slots=slots,
+            )
+        )
+
+    return CalendarAvailabilityResponse(week_start=start, week_end=end, days=days)
 
 
 def get_activity_room_ids(db: Session, activity_id: UUID) -> list[UUID]:

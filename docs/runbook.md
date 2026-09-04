@@ -33,14 +33,14 @@
 - Migración: `alembic upgrade head` (revisión **`014`**: alinea `studio_instructors.email` con login vinculado; **`013`**: `studio_instructor_activities`; **`012`**: backups; **`011`**: `studio_activity_rooms`; **`010`** asegura `shares_space_with_room_id`).
 - API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
 - UI:
-  - Admin → **Estudio** (`/studio`): sedes; salones; actividades; instructores; alumnos; feriados; auditoría.
-    - **Pausado** (flag `STUDIO_SCHEDULE_PAUSED`): Series, Sesiones, Productos, Paquetes y portales de reserva/agenda (APIs 410; UI stub).
+  - Admin → **Estudio** (`/studio`): **Calendario** (disponibilidad por horario/capacidad/duración); sedes; salones; actividades; instructores; alumnos; feriados; auditoría.
+    - **Pausado** (flag `STUDIO_SCHEDULE_PAUSED`): Series, Sesiones, Productos, Paquetes y portales de reserva/agenda (APIs 410; UI stub). El Calendario de catálogo **sigue disponible**.
   - Instructor → **Mi agenda** (`/instructor`): stub reconstrucción mientras pause.
   - Alumno → **Mis clases** (`/mis-clases`): stub reconstrucción mientras pause.
 - Packs de N clases (sin mensual libre); alcance `all_sedes` o `one_sede` al asignar.
 - Specs: `openspec/specs/studio-*.md` (+ `auth`, `platform`, `deployment`).
 - Lecciones: `docs/studio-ops-lessons.md`
-- Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`, `2026-09-02-studio-instructors-edit/`
+- Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`, `2026-09-02-studio-instructors-edit/`, `2026-09-04-studio-schedule-pause/`
 
 ## Backups de Base de Datos (S3 / Cloudflare R2)
 - Menú admin **Configuración** (`/configuracion`).
