@@ -94,6 +94,12 @@ export default function StudioAdminPage() {
     full_name: "", email: "", phone: "", active: true, activity_ids: [] as string[], password: "",
   });
   const [editInstructorPasswordTouched, setEditInstructorPasswordTouched] = useState(false);
+  const [editStudent, setEditStudent] = useState<Item | null>(null);
+  const [editStudentDraft, setEditStudentDraft] = useState({
+    full_name: "", email: "", phone: "", document_id: "", emergency_contact: "", emergency_phone: "",
+    medical_notes: "", active: true, password: "",
+  });
+  const [editStudentPasswordTouched, setEditStudentPasswordTouched] = useState(false);
 
   const value = (key: string) => values[key] ?? "";
   const setValue = (key: string, next: string) => setValues((current) => ({ ...current, [key]: next }));
@@ -152,6 +158,7 @@ export default function StudioAdminPage() {
       if (path.includes("/studio/sites")) await load("sites", "/api/v1/studio/sites");
       if (path.includes("/studio/activities")) await load("activities", "/api/v1/studio/activities");
       if (path.includes("/studio/instructors")) await load("instructors", "/api/v1/studio/instructors");
+      if (path.includes("/studio/students")) await load("students", "/api/v1/studio/students");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo guardar.");
     } finally { setBusy(false); }
@@ -495,6 +502,126 @@ export default function StudioAdminPage() {
     }
   }
 
+  function openEditStudent(student: Item) {
+    setModalError(null);
+    setEditStudentPasswordTouched(false);
+    setEditStudent(student);
+    setEditStudentDraft({
+      full_name: String(student.full_name ?? ""),
+      email: String(student.email ?? ""),
+      phone: String(student.phone ?? ""),
+      document_id: String(student.document_id ?? ""),
+      emergency_contact: String(student.emergency_contact ?? ""),
+      emergency_phone: String(student.emergency_phone ?? ""),
+      medical_notes: String(student.medical_notes ?? ""),
+      active: student.active !== false,
+      password: "",
+    });
+  }
+
+  function closeEditStudent() {
+    setEditStudent(null);
+    setModalError(null);
+    setEditStudentPasswordTouched(false);
+  }
+
+  async function saveEditStudent() {
+    if (!editStudent) return;
+    const originalEmail = String(editStudent.email ?? "").trim().toLowerCase();
+    const email = editStudentDraft.email.trim();
+    const emailChanged = email.toLowerCase() !== originalEmail;
+    const password = editStudentPasswordTouched ? editStudentDraft.password : "";
+    if (password && !email && !originalEmail) {
+      setModalError("Indicá el email para crear o actualizar el acceso.");
+      return;
+    }
+    setBusy(true); setModalError(null); setError(null); setNotice(null);
+    try {
+      const body: Record<string, unknown> = {
+        full_name: editStudentDraft.full_name.trim(),
+        phone: editStudentDraft.phone.trim() || null,
+        document_id: editStudentDraft.document_id.trim() || null,
+        emergency_contact: editStudentDraft.emergency_contact.trim() || null,
+        emergency_phone: editStudentDraft.emergency_phone.trim() || null,
+        medical_notes: editStudentDraft.medical_notes.trim() || null,
+        active: editStudentDraft.active,
+      };
+      if (emailChanged) body.email = email || null;
+      if (password) body.password = password;
+      await apiFetch(`/api/v1/studio/students/${editStudent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setNotice("Alumno actualizado.");
+      closeEditStudent();
+      await load("students", "/api/v1/studio/students");
+      if (tab === "students") await loadTab("students");
+    } catch (e) {
+      setModalError(e instanceof ApiError ? e.message : "No se pudo guardar el alumno.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function softDeleteStudent(student: Item) {
+    if (!window.confirm(`¿Desactivar al alumno "${asText(student.full_name)}"? El historial se mantiene.`)) return;
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      await apiFetch(`/api/v1/studio/students/${student.id}`, { method: "DELETE" });
+      setNotice("Alumno desactivado.");
+      await load("students", "/api/v1/studio/students");
+      if (tab === "students") await loadTab("students");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo desactivar el alumno.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createStudentSubmit(e: FormEvent) {
+    e.preventDefault();
+    const email = value("studentEmail").trim();
+    const password = value("studentPassword");
+    if (password && !email) {
+      setError("Indicá el email para habilitar el acceso a la app.");
+      return;
+    }
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const body: Record<string, unknown> = {
+        full_name: value("studentName").trim(),
+        email: email || null,
+        phone: value("studentPhone").trim() || null,
+        document_id: value("studentDocument").trim() || null,
+        emergency_contact: value("studentEmergencyContact").trim() || null,
+        emergency_phone: value("studentEmergencyPhone").trim() || null,
+        medical_notes: value("studentMedicalNotes").trim() || null,
+      };
+      if (password) body.password = password;
+      await apiFetch("/api/v1/studio/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setNotice("Alumno creado.");
+      setValue("studentName", "");
+      setValue("studentEmail", "");
+      setValue("studentPhone", "");
+      setValue("studentPassword", "");
+      setValue("studentDocument", "");
+      setValue("studentEmergencyContact", "");
+      setValue("studentEmergencyPhone", "");
+      setValue("studentMedicalNotes", "");
+      await load("students", "/api/v1/studio/students");
+      if (tab === "students") await loadTab("students");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo crear el alumno.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function patchSite(siteId: string, body: Record<string, unknown>, success: string) {
     setBusy(true); setError(null); setNotice(null);
     try {
@@ -691,6 +818,7 @@ export default function StudioAdminPage() {
           rooms={list("roomsAll")}
           activities={list("activities")}
           instructors={list("instructors")}
+          students={list("students")}
         />
       )}
 
@@ -1182,7 +1310,110 @@ export default function StudioAdminPage() {
           </div>
         )}
       </section>}
-      {tab === "students" && <ProfileSection title="Alumno" endpoint="students" fields={["full_name", "email", "login_email", "password", "document_id", "emergency_contact", "emergency_phone", "medical_notes"]} items={list("students")} values={values} setValue={setValue} submit={submit} form={form} />}
+      {tab === "students" && <section className="space-y-4">
+        <form
+          onSubmit={(e) => void createStudentSubmit(e)}
+          autoComplete="off"
+          className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2"
+        >
+          <Field label="Nombre completo" name="studio-new-student-name" autoComplete="off" value={value("studentName")} onChange={(e) => setValue("studentName", e.target.value)} required />
+          <Field label="Teléfono" name="studio-new-student-phone" autoComplete="off" value={value("studentPhone")} onChange={(e) => setValue("studentPhone", e.target.value)} />
+          <div className="sm:col-span-2">
+            <Field label="Email (opcional)" type="email" name="studio-new-student-email" autoComplete="off" value={value("studentEmail")} onChange={(e) => setValue("studentEmail", e.target.value)} />
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <Field label="Contraseña de acceso (opcional)" type="password" name="studio-new-student-password" autoComplete="new-password" value={value("studentPassword")} onChange={(e) => setValue("studentPassword", e.target.value)} />
+            <p className="text-xs text-slate-500">Vacío por defecto. Si la completás, el mismo email será el de acceso a la app.</p>
+          </div>
+          <Field label="Documento" name="studio-new-student-doc" autoComplete="off" value={value("studentDocument")} onChange={(e) => setValue("studentDocument", e.target.value)} />
+          <Field label="Contacto de emergencia" name="studio-new-student-ec" autoComplete="off" value={value("studentEmergencyContact")} onChange={(e) => setValue("studentEmergencyContact", e.target.value)} />
+          <Field label="Teléfono de emergencia" name="studio-new-student-ep" autoComplete="off" value={value("studentEmergencyPhone")} onChange={(e) => setValue("studentEmergencyPhone", e.target.value)} />
+          <Field label="Notas médicas" name="studio-new-student-med" autoComplete="off" value={value("studentMedicalNotes")} onChange={(e) => setValue("studentMedicalNotes", e.target.value)} />
+          <div className="sm:col-span-2"><button type="submit" className={buttonClass} disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button></div>
+        </form>
+        {list("students").length === 0 ? (
+          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">No hay alumnos.</p>
+        ) : (
+          <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+            {list("students").map((student) => (
+              <li key={student.id} className="flex flex-col gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-medium text-slate-900">
+                    {asText(student.full_name)}{student.active === false ? " · inactivo" : ""}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>email: {asText(student.email)}</span>
+                    <span>doc: {asText(student.document_id)}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700" onClick={() => openEditStudent(student)}>Editar</button>
+                  {student.active !== false && (
+                    <button type="button" className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => void softDeleteStudent(student)}>Eliminar</button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {editStudent && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label="Editar alumno">
+            <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-lg">
+              <div className="border-b border-slate-100 p-4">
+                <h3 className="text-lg font-semibold text-slate-900">Editar alumno</h3>
+                <p className="mt-1 text-xs text-slate-500">El email es único: contacto y acceso a la app.</p>
+                {modalError && (
+                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+                    {modalError}
+                  </p>
+                )}
+              </div>
+              <form
+                autoComplete="off"
+                onSubmit={(e) => { e.preventDefault(); void saveEditStudent(); }}
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Nombre completo" value={editStudentDraft.full_name} onChange={(e) => { setModalError(null); setEditStudentDraft((d) => ({ ...d, full_name: e.target.value })); }} required />
+                    <Field label="Teléfono" value={editStudentDraft.phone} onChange={(e) => { setModalError(null); setEditStudentDraft((d) => ({ ...d, phone: e.target.value })); }} />
+                    <div className="sm:col-span-2">
+                      <Field label="Email" type="email" name="studio-edit-student-email" autoComplete="off" value={editStudentDraft.email} onChange={(e) => { setModalError(null); setEditStudentDraft((d) => ({ ...d, email: e.target.value })); }} />
+                    </div>
+                    <Field label="Documento" value={editStudentDraft.document_id} onChange={(e) => { setModalError(null); setEditStudentDraft((d) => ({ ...d, document_id: e.target.value })); }} />
+                    <Field label="Contacto de emergencia" value={editStudentDraft.emergency_contact} onChange={(e) => { setModalError(null); setEditStudentDraft((d) => ({ ...d, emergency_contact: e.target.value })); }} />
+                    <Field label="Teléfono de emergencia" value={editStudentDraft.emergency_phone} onChange={(e) => { setModalError(null); setEditStudentDraft((d) => ({ ...d, emergency_phone: e.target.value })); }} />
+                    <Field label="Notas médicas" value={editStudentDraft.medical_notes} onChange={(e) => { setModalError(null); setEditStudentDraft((d) => ({ ...d, medical_notes: e.target.value })); }} />
+                    <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-700 sm:col-span-2">
+                      <input type="checkbox" checked={editStudentDraft.active} onChange={(e) => { setModalError(null); setEditStudentDraft((d) => ({ ...d, active: e.target.checked })); }} />
+                      Activo
+                    </label>
+                    <div className="space-y-1 sm:col-span-2">
+                      <Field
+                        label="Nueva contraseña (opcional)"
+                        type="password"
+                        name="studio-edit-student-password"
+                        autoComplete="new-password"
+                        value={editStudentDraft.password}
+                        onChange={(e) => {
+                          setModalError(null);
+                          setEditStudentPasswordTouched(true);
+                          setEditStudentDraft((d) => ({ ...d, password: e.target.value }));
+                        }}
+                      />
+                      <p className="text-xs text-slate-500">Dejala vacía para mantener la actual.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
+                  <button type="button" className="rounded-lg border px-3 py-2 text-sm" onClick={closeEditStudent}>Cancelar</button>
+                  <button type="submit" className={buttonClass} disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </section>}
 
       {tab === "holidays" && <section className="space-y-4">
         {form((e) => { e.preventDefault(); void submit("/api/v1/studio/holidays", { holiday_date: value("holidayDate"), name: value("holidayName"), site_id: id("holidaySite") || null }, "Feriado creado."); }, <><Field label="Fecha" type="date" value={value("holidayDate")} onChange={(e) => setValue("holidayDate", e.target.value)} required /><Field label="Nombre" value={value("holidayName")} onChange={(e) => setValue("holidayName", e.target.value)} required /><Select label="Sede (opcional)" field="holidaySite" items={selects.site} required={false} /></>)}
@@ -1192,24 +1423,4 @@ export default function StudioAdminPage() {
       {tab === "audit" && <List items={list("audit")} fields={["action", "entity_type", "entity_id", "created_at", "actor_user_id"]} empty="No hay eventos de auditoría." />}
     </div>
   );
-}
-
-function ProfileSection({ title, endpoint, fields, items, values, setValue, submit, form }: {
-  title: string; endpoint: "students"; fields: string[]; items: Item[];
-  values: Record<string, string>; setValue: (key: string, value: string) => void;
-  submit: (path: string, body: unknown, success: string) => Promise<void>;
-  form: (onSubmit: (e: FormEvent) => void, children: React.ReactNode) => React.ReactNode;
-}) {
-  const prefix = endpoint;
-  const labels: Record<string, string> = { full_name: "Nombre completo", email: "Email de contacto", login_email: "Email de acceso", password: "Contraseña (mín. 8)", document_id: "Documento", emergency_contact: "Contacto de emergencia", emergency_phone: "Teléfono de emergencia", medical_notes: "Notas médicas" };
-  return <section className="space-y-4">
-    {form((e) => {
-      e.preventDefault();
-      const body = Object.fromEntries(fields.map((field) => [field, values[`${prefix}-${field}`] || null]));
-      if (!body.login_email) delete body.login_email;
-      if (!body.password) delete body.password;
-      void submit(`/api/v1/studio/${endpoint}`, body, `${title} creado.`);
-    }, <>{fields.map((field) => <Field key={field} label={labels[field]} type={field === "password" ? "password" : "text"} value={values[`${prefix}-${field}`] ?? ""} onChange={(e) => setValue(`${prefix}-${field}`, e.target.value)} required={field === "full_name"} />)}</>)}
-    <List items={items} fields={["full_name", "email", "document_id", "active"]} />
-  </section>;
 }

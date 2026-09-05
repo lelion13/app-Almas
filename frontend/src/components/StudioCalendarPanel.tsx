@@ -18,6 +18,9 @@ type CalendarSlot = {
   series_id?: string | null;
   instructor_id?: string | null;
   instructor_name?: string | null;
+  booked_count?: number;
+  remaining_capacity?: number | null;
+  enrolled?: Array<{ student_id: string; student_name: string; booking_id: string }>;
 };
 type CalendarDay = {
   date: string;
@@ -78,9 +81,10 @@ type Props = {
   rooms: Item[];
   activities: Item[];
   instructors: Item[];
+  students: Item[];
 };
 
-export default function StudioCalendarPanel({ sites, rooms, activities, instructors }: Props) {
+export default function StudioCalendarPanel({ sites, rooms, activities, instructors, students }: Props) {
   const [weekAnchor, setWeekAnchor] = useState(() => mondayIso(new Date()));
   const [siteId, setSiteId] = useState("");
   const [roomId, setRoomId] = useState("");
@@ -91,8 +95,10 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<SelectedSlot | null>(null);
   const [instructorId, setInstructorId] = useState("");
+  const [enrollStudentId, setEnrollStudentId] = useState("");
   const [modalError, setModalError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
 
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -166,14 +172,16 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
   function openSlot(day: CalendarDay, slot: CalendarSlot) {
     setSelected({ day, slot });
     setInstructorId(slot.instructor_id ? String(slot.instructor_id) : "");
+    setEnrollStudentId("");
     setModalError(null);
     setNotice(null);
   }
 
   function closeModal() {
-    if (saving) return;
+    if (saving || enrolling) return;
     setSelected(null);
     setInstructorId("");
+    setEnrollStudentId("");
     setModalError(null);
   }
 
@@ -215,6 +223,42 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
       setModalError(e instanceof ApiError ? e.message : "No se pudo asignar la clase.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function confirmEnroll() {
+    if (!selected?.slot.series_id) return;
+    if (!enrollStudentId) {
+      setModalError("Seleccioná un alumno.");
+      return;
+    }
+    const remaining = selected.slot.remaining_capacity ?? 0;
+    if (remaining <= 0) {
+      setModalError("No hay cupo libre en este horario.");
+      return;
+    }
+    setEnrolling(true);
+    setModalError(null);
+    try {
+      await apiFetch("/api/v1/studio/calendar/enroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          series_id: selected.slot.series_id,
+          session_date: selected.day.date,
+          student_id: enrollStudentId,
+        }),
+      });
+      setNotice(`Alumno asignado al ${selected.day.date} · ${toHm(selected.slot.start_time)}`);
+      setEnrollStudentId("");
+      setReloadToken((n) => n + 1);
+      // Keep modal open but refresh selected from next load via effect — close and let user reopen,
+      // or patch local selected after reload. Close for simplicity.
+      setSelected(null);
+    } catch (e) {
+      setModalError(e instanceof ApiError ? e.message : "No se pudo asignar el alumno.");
+    } finally {
+      setEnrolling(false);
     }
   }
 
@@ -362,7 +406,12 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
                             {slot.room_name} · cupo {slot.capacity}
                           </div>
                           {assigned ? (
-                            <div className="mt-0.5 font-medium text-brand-800">{slot.instructor_name}</div>
+                            <>
+                              <div className="mt-0.5 font-medium text-brand-800">{slot.instructor_name}</div>
+                              <div className="text-slate-500">
+                                {slot.booked_count ?? 0}/{slot.capacity} alumnos
+                              </div>
+                            </>
                           ) : (
                             <div className="mt-0.5 text-slate-400">Sin instructor</div>
                           )}
@@ -439,7 +488,7 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
                 className={inputClass}
                 value={instructorId}
                 onChange={(e) => setInstructorId(e.target.value)}
-                disabled={saving}
+                disabled={saving || enrolling}
               >
                 <option value="">Seleccionar…</option>
                 {instructorsForSelected.map((instructor) => (
@@ -455,6 +504,56 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
               </p>
             )}
 
+            {selected.slot.series_id && (
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <h4 className="text-sm font-semibold text-slate-900">Alumnos de este día</h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  Cupo {selected.slot.booked_count ?? 0}/{selected.slot.capacity}
+                  {(selected.slot.remaining_capacity ?? 0) > 0
+                    ? ` · libres ${selected.slot.remaining_capacity}`
+                    : " · sin cupo"}
+                </p>
+                {(selected.slot.enrolled?.length ?? 0) > 0 ? (
+                  <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto text-sm text-slate-700">
+                    {selected.slot.enrolled!.map((row) => (
+                      <li key={row.booking_id} className="rounded bg-slate-50 px-2 py-1">{row.student_name}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-400">Todavía no hay alumnos asignados.</p>
+                )}
+                {(selected.slot.remaining_capacity ?? 0) > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <label className="block space-y-1 text-sm text-slate-700">
+                      <span>Asignar alumno</span>
+                      <select
+                        className={inputClass}
+                        value={enrollStudentId}
+                        onChange={(e) => setEnrollStudentId(e.target.value)}
+                        disabled={enrolling || saving}
+                      >
+                        <option value="">Seleccionar…</option>
+                        {students
+                          .filter((student) => student.active !== false)
+                          .filter((student) => !(selected.slot.enrolled ?? []).some((e) => e.student_id === student.id))
+                          .map((student) => (
+                            <option key={student.id} value={student.id}>{asText(student.full_name)}</option>
+                          ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className={buttonClass}
+                      onClick={() => void confirmEnroll()}
+                      disabled={enrolling || saving || !enrollStudentId}
+                    >
+                      {enrolling ? "Asignando…" : "Asignar alumno"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {modalError && (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                 {modalError}
@@ -466,17 +565,17 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
                 type="button"
                 className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                 onClick={closeModal}
-                disabled={saving}
+                disabled={saving || enrolling}
               >
-                Cancelar
+                Cerrar
               </button>
               <button
                 type="button"
                 className={buttonClass}
                 onClick={() => void confirmSchedule()}
-                disabled={saving || !instructorsForSelected.length}
+                disabled={saving || enrolling || !instructorsForSelected.length}
               >
-                {saving ? "Guardando…" : selected.slot.series_id ? "Actualizar" : "Confirmar"}
+                {saving ? "Guardando…" : selected.slot.series_id ? "Actualizar instructor" : "Confirmar instructor"}
               </button>
             </div>
           </div>

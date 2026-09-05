@@ -7,7 +7,9 @@ Activities, recurring series, session materialization, holidays, instructors’ 
 
 ### Requirement: Schedule stack pause
 
-While `STUDIO_SCHEDULE_PAUSED` is enabled, the system MUST NOT expose operational schedule APIs for series, session expand, session list, or mass-cancel. Those endpoints MUST respond with **410 Gone** and a clear Spanish detail that agenda/paquetes are under reconstruction.
+While `STUDIO_SCHEDULE_PAUSED` is enabled, the system MUST NOT expose operational schedule APIs for series list/create/patch/delete, session expand, session list, or mass-cancel. Those endpoints MUST respond with **410 Gone** and a clear Spanish detail that agenda/paquetes are under reconstruction.
+
+**Carve-out:** `GET /api/v1/studio/calendar/availability` and `POST /api/v1/studio/calendar/schedule` MUST remain available (not 410) so Estudio Calendario can show catalog availability and assign instructors (creates/updates `ClassSeries` rows).
 
 Catalog endpoints (sites, rooms, hours, activities, instructors, students, holidays, audit) MUST remain available.
 
@@ -27,6 +29,69 @@ Estudio admin UI MUST NOT show tabs **Series** or **Sesiones**.
 - **GIVEN** pause enabled
 - **WHEN** admin lists sites, rooms, activities, instructors, or students
 - **THEN** the response MUST be `200`
+
+#### Scenario: Calendar carve-out under pause
+- **GIVEN** pause enabled
+- **WHEN** admin calls `GET /api/v1/studio/calendar/availability` or `POST /api/v1/studio/calendar/schedule`
+- **THEN** the response MUST NOT be `410` solely due to the pause gate
+
+### Requirement: Estudio calendar availability
+
+Admin MUST have an Estudio **Calendario** week view (Mon–Sun) that shows availability slots computed from **room open hours**, **room capacity**, and each linked activity’s **default duration** (catalog tiling). Slot generation MUST NOT depend on materialized sessions.
+
+Filters MUST cascade: selecting a site narrows rooms to that site; selecting an activity narrows rooms to those linked via `room_ids`. Filters MAY be empty (show all matching active catalog).
+
+Weekday for hours and series MUST use **0=Sunday … 6=Saturday** (same as room-hours UI).
+
+Holidays in the week MUST still show the day column, marked as feriado (attenuated in UI). Slots MAY still appear.
+
+Active class series MUST be overlaid onto matching slots (`room_id` + `activity_id` + `weekday` + `start_time`). Overlay fields MUST include `series_id`, `instructor_id`, and `instructor_name` when assigned. Unassigned slots MUST be distinguishable in the UI.
+
+#### Scenario: Tile slots by activity duration
+- **GIVEN** room open 08:00–10:00 and activity duration 60 linked to that room
+- **WHEN** admin loads the week containing that weekday
+- **THEN** slots MUST include 08:00–09:00 and 09:00–10:00 for that activity/room
+- **AND** each slot MUST expose the room capacity
+
+#### Scenario: Cascade filters
+- **GIVEN** site S with rooms R1, R2 and activity A linked only to R1
+- **WHEN** admin selects site S and activity A
+- **THEN** the room filter options MUST only include R1
+
+#### Scenario: Assigned instructor visible on slot
+- **GIVEN** an active series for room R, activity A, weekday W, start 09:00 with instructor I
+- **WHEN** admin loads the calendar week
+- **THEN** the matching slot MUST include `instructor_name` for I
+- **AND** reopening the slot modal MUST preselect I
+
+#### Scenario: Holiday day attenuated
+- **GIVEN** a holiday on date D in the requested week
+- **WHEN** admin views the calendar
+- **THEN** day D MUST be visible and marked as feriado
+
+### Requirement: Calendar slot instructor assignment
+
+Admin MUST open a modal when clicking an availability slot. The modal MUST allow selecting an instructor from active instructors whose `activity_ids` include the slot’s activity. Confirming MUST create or update a class series for that site/room/activity/weekday/start/duration/capacity via `POST /api/v1/studio/calendar/schedule`.
+
+If a matching active series already exists (same room, activity, weekday, start_time), the endpoint MUST **update** the instructor (and related slot fields) instead of creating a duplicate. If the instructor is not linked to the activity, the API MUST return `422`.
+
+#### Scenario: Filter instructors by activity
+- **GIVEN** slot for activity Yoga
+- **AND** instructor A linked to Yoga and instructor B linked only to Pilates
+- **WHEN** admin opens the slot modal
+- **THEN** the instructor list MUST include A and MUST NOT include B
+
+#### Scenario: Schedule from calendar under pause
+- **GIVEN** `STUDIO_SCHEDULE_PAUSED` is true
+- **WHEN** admin confirms a slot with a valid instructor
+- **THEN** `POST /api/v1/studio/calendar/schedule` MUST succeed (not `410`)
+- **AND** a class series MUST be created or updated
+
+#### Scenario: Reassign instructor on same slot
+- **GIVEN** an existing series on a calendar slot
+- **WHEN** admin selects a different valid instructor and confirms
+- **THEN** the same series MUST be updated
+- **AND** a second series for that slot MUST NOT be created
 
 ### Requirement: Activities
 

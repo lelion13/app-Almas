@@ -33,11 +33,18 @@ Protected non-public API routes MUST require JWT. Passwords MUST be bcrypt-hashe
 
 The backend MUST read `STUDIO_SCHEDULE_PAUSED` from environment (boolean; default **true**). When true, paused studio schedule/pack/booking routes MUST return 410. When false, previous behavior MUST resume without schema changes.
 
+While pause is enabled, Estudio **Calendario** endpoints (`GET /api/v1/studio/calendar/availability`, `POST /api/v1/studio/calendar/schedule`) MUST remain usable (carve-out). See `studio-scheduling`.
+
 `.env.example` / `.env.prod.example` MUST document the variable.
 
 #### Scenario: Flag off restores APIs
 - **GIVEN** `STUDIO_SCHEDULE_PAUSED=false`
 - **WHEN** admin calls `GET /api/v1/studio/series`
+- **THEN** the response MUST NOT be `410` solely due to the pause gate
+
+#### Scenario: Calendar works while paused
+- **GIVEN** `STUDIO_SCHEDULE_PAUSED=true`
+- **WHEN** admin calls calendar availability or schedule
 - **THEN** the response MUST NOT be `410` solely due to the pause gate
 
 ### Requirement: Spec-driven changes

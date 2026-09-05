@@ -15,7 +15,7 @@ from app.models.studio import (
 from app.schemas.studio import (
     ActivityCreate, ActivityPatch, ActivityResponse, AttendanceResponse, AttendanceSet,
     AuditResponse, BookingCreate, BookingResponse, CalendarAvailabilityResponse,
-    CalendarScheduleCreate,
+    CalendarEnrollCreate, CalendarScheduleCreate,
     FixedEnrollmentCreate,
     FixedEnrollmentResponse, HolidayCreate, HolidayResponse, InstructorCreate,
     InstructorPatch, InstructorResponse, PackAssign, PackProductCreate, PackProductPatch,
@@ -118,6 +118,18 @@ def calendar_availability(
 def calendar_schedule(body: CalendarScheduleCreate, _admin: AdminOnly, db: Session = Depends(get_db)):
     """Assign instructor to a calendar slot (creates series). Not gated by schedule pause."""
     return service.schedule_from_calendar(db, body.model_dump())
+
+
+@router.post("/calendar/enroll", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
+def calendar_enroll(body: CalendarEnrollCreate, admin: AdminOnly, db: Session = Depends(get_db)):
+    """Assign student to a calendar date for a series. Not gated by schedule pause. No pack."""
+    return service.enroll_student_on_calendar(
+        db,
+        series_id=body.series_id,
+        session_date=body.session_date,
+        student_id=body.student_id,
+        actor_user_id=admin.id,
+    )
 
 
 @router.get("/activities", response_model=list[ActivityResponse])

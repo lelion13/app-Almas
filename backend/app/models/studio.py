@@ -235,8 +235,10 @@ class Booking(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("studio_class_sessions.id"), nullable=False
     )
-    pack_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_student_packs.id"), nullable=False)
-    source: Mapped[str] = mapped_column(String(32), nullable=False, default="mobile")  # fixed|mobile|waitlist
+    pack_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_student_packs.id"), nullable=True
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="mobile")  # fixed|mobile|waitlist|calendar
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="booked")  # booked|cancelled
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

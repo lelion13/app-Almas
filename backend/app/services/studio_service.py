@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.schemas.studio import (
     ActivityResponse,
     CalendarAvailabilityResponse,
     CalendarDay,
+    CalendarEnrolledStudent,
     CalendarHolidayInfo,
     CalendarSlot,
     InstructorResponse,
@@ -478,6 +479,53 @@ def build_calendar_availability(
             key = (row.room_id, row.activity_id, int(row.weekday), _to_minutes(row.start_time))
             series_index[key] = row
 
+    # Bookings overlay for the week: (series_id, date) -> enrolled list
+    enroll_by_series_date: dict[tuple[UUID, date], list[CalendarEnrolledStudent]] = {}
+    series_ids = {s.id for s in series_index.values()}
+    if series_ids:
+        sessions = list(
+            db.scalars(
+                select(ClassSession).where(
+                    ClassSession.series_id.in_(series_ids),
+                    ClassSession.session_date.between(start, end),
+                )
+            ).all()
+        )
+        session_by_id = {s.id: s for s in sessions}
+        if sessions:
+            bookings = list(
+                db.scalars(
+                    select(Booking).where(
+                        Booking.session_id.in_([s.id for s in sessions]),
+                        Booking.status == "booked",
+                    )
+                ).all()
+            )
+            student_ids = {b.student_id for b in bookings}
+            students_by_id = {
+                s.id: s
+                for s in (
+                    db.scalars(select(StudioStudent).where(StudioStudent.id.in_(student_ids))).all()
+                    if student_ids
+                    else []
+                )
+            }
+            for booking in bookings:
+                session = session_by_id.get(booking.session_id)
+                if session is None or session.series_id is None:
+                    continue
+                student = students_by_id.get(booking.student_id)
+                if student is None:
+                    continue
+                key = (session.series_id, session.session_date)
+                enroll_by_series_date.setdefault(key, []).append(
+                    CalendarEnrolledStudent(
+                        student_id=student.id,
+                        student_name=student.full_name,
+                        booking_id=booking.id,
+                    )
+                )
+
     days: list[CalendarDay] = []
     for offset in range(7):
         day = start + timedelta(days=offset)
@@ -506,6 +554,14 @@ def build_calendar_availability(
                     continue
                 for start_t, end_t in tile_open_window(hour_row.open_time, hour_row.close_time, duration):
                     assigned = series_index.get((room.id, activity.id, wd, _to_minutes(start_t)))
+                    slot_capacity = int(assigned.capacity) if assigned else int(room.capacity)
+                    enrolled: list[CalendarEnrolledStudent] = []
+                    booked_count = 0
+                    remaining: int | None = None
+                    if assigned is not None:
+                        enrolled = list(enroll_by_series_date.get((assigned.id, day), []))
+                        booked_count = len(enrolled)
+                        remaining = max(slot_capacity - booked_count, 0)
                     slots.append(
                         CalendarSlot(
                             site_id=site.id,
@@ -517,12 +573,15 @@ def build_calendar_availability(
                             start_time=start_t,
                             end_time=end_t,
                             duration_minutes=duration,
-                            capacity=int(room.capacity),
+                            capacity=slot_capacity,
                             series_id=assigned.id if assigned else None,
                             instructor_id=assigned.instructor_id if assigned else None,
                             instructor_name=(
                                 instructor_names.get(assigned.instructor_id) if assigned else None
                             ),
+                            booked_count=booked_count,
+                            remaining_capacity=remaining,
+                            enrolled=enrolled,
                         )
                     )
         slots.sort(key=lambda s: (s.start_time, s.site_name, s.room_name, s.activity_name))
@@ -587,6 +646,114 @@ def schedule_from_calendar(db: Session, values: dict[str, Any]) -> ClassSeries:
         "active": True,
     }
     return create_series(db, payload)
+
+
+def ensure_session_for_series_date(db: Session, series: ClassSeries, session_date: date) -> ClassSession:
+    """Get or create a ClassSession for series on a civil date (calendar enroll)."""
+    expected_wd = room_hours_weekday_from_date(session_date)
+    if int(series.weekday) != expected_wd:
+        _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "La fecha no coincide con el día de la semana de la clase.",
+        )
+    holiday = db.scalar(
+        select(StudioHoliday).where(
+            StudioHoliday.holiday_date == session_date,
+            or_(StudioHoliday.site_id.is_(None), StudioHoliday.site_id == series.site_id),
+        )
+    )
+    if holiday is not None:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "No se puede asignar alumnos en un feriado.")
+
+    existing = db.scalar(
+        select(ClassSession).where(
+            ClassSession.series_id == series.id,
+            ClassSession.session_date == session_date,
+        )
+    )
+    if existing is not None:
+        if existing.status == "cancelled":
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "La sesión de ese día está cancelada.")
+        return existing
+
+    session = ClassSession(
+        series_id=series.id,
+        site_id=series.site_id,
+        room_id=series.room_id,
+        activity_id=series.activity_id,
+        instructor_id=series.instructor_id,
+        session_date=session_date,
+        start_time=series.start_time,
+        duration_minutes=series.duration_minutes,
+        capacity=series.capacity,
+        level=series.level,
+        status="scheduled",
+    )
+    db.add(session)
+    db.flush()
+    return session
+
+
+def enroll_student_on_calendar(
+    db: Session, *, series_id: UUID, session_date: date, student_id: UUID, actor_user_id: UUID | None = None
+) -> Booking:
+    """Admin one-off enroll without pack/credit."""
+    series = _get(db, ClassSeries, series_id, "Series")
+    if not series.active:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "La clase no está activa.")
+    student = _get(db, StudioStudent, student_id, "Student")
+    if not student.active:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El alumno no está activo.")
+
+    session = ensure_session_for_series_date(db, series, session_date)
+    session = db.scalar(select(ClassSession).where(ClassSession.id == session.id).with_for_update())
+    if session is None:
+        _error(status.HTTP_404_NOT_FOUND, "Session not found")
+
+    existing = db.scalar(
+        select(Booking).where(Booking.student_id == student_id, Booking.session_id == session.id)
+    )
+    if existing is not None and existing.status == "booked":
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El alumno ya está asignado a este horario.")
+
+    booked_count = (
+        db.scalar(
+            select(func.count(Booking.id)).where(
+                Booking.session_id == session.id, Booking.status == "booked"
+            )
+        )
+        or 0
+    )
+    if booked_count >= session.capacity:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "No hay cupo libre en este horario.")
+
+    if existing is not None:
+        existing.status = "booked"
+        existing.pack_id = None
+        existing.source = "calendar"
+        existing.cancelled_at = None
+        booking = existing
+    else:
+        booking = Booking(
+            student_id=student_id,
+            session_id=session.id,
+            pack_id=None,
+            source="calendar",
+            status="booked",
+        )
+        db.add(booking)
+    db.flush()
+    write_audit(
+        db,
+        actor_user_id,
+        "calendar_enroll",
+        "booking",
+        booking.id,
+        {"session_id": str(session.id), "student_id": str(student_id), "series_id": str(series_id)},
+    )
+    db.commit()
+    db.refresh(booking)
+    return booking
 
 
 def get_activity_room_ids(db: Session, activity_id: UUID) -> list[UUID]:
@@ -739,15 +906,24 @@ def _profile_login_email(db: Session, user_id: UUID | None) -> str | None:
     return user.email if user is not None else None
 
 
+def _student_canonical_email(db: Session, student: StudioStudent) -> str | None:
+    if student.user_id:
+        user = db.get(User, student.user_id)
+        if user is not None and user.email:
+            return user.email
+    email = (student.email or "").strip()
+    return email or None
+
+
 def student_to_response(db: Session, student: StudioStudent) -> StudentResponse:
-    login_email = _profile_login_email(db, student.user_id)
+    canonical = _student_canonical_email(db, student)
     return StudentResponse(
         id=student.id,
         full_name=student.full_name,
-        email=student.email,
+        email=canonical,
         phone=student.phone,
         user_id=student.user_id,
-        login_email=login_email,
+        login_email=canonical if student.user_id else None,
         document_id=student.document_id,
         emergency_contact=student.emergency_contact,
         emergency_phone=student.emergency_phone,
@@ -918,13 +1094,91 @@ def update_instructor(db: Session, instructor_id: UUID, values: dict[str, Any]) 
 
 
 def create_student(db: Session, values: dict[str, Any]) -> StudentResponse:
-    student = _create_profile(db, StudioStudent, "alumno", values)
+    password = values.pop("password", None)
+    values.pop("login_email", None)
+    email = (values.get("email") or "").strip() or None
+    values["email"] = email
+    if password:
+        if not email:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email para habilitar el acceso.")
+        if _user_email_taken(db, email):
+            _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
+        user = User(email=email, password_hash=hash_password(password), role="alumno")
+        db.add(user)
+        db.flush()
+        values["user_id"] = user.id
+    student = StudioStudent(**values)
+    db.add(student)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _error(status.HTTP_409_CONFLICT, "Conflicto al guardar el alumno (email duplicado).")
+    db.refresh(student)
     return student_to_response(db, student)
 
 
 def update_student(db: Session, student_id: UUID, values: dict[str, Any]) -> StudentResponse:
     student = _get(db, StudioStudent, student_id, "Student")
-    student = update_entity(db, student, values)
+    values.pop("login_email", None)
+    password = values.pop("password", None)
+    email_sent = "email" in values
+    requested_email: str | None = None
+    if email_sent:
+        requested_email = (values.pop("email") or "").strip() or None
+
+    for key, value in values.items():
+        setattr(student, key, value)
+
+    if student.user_id:
+        user = _get(db, User, student.user_id, "User")
+        if email_sent and _normalize_email(requested_email) != _normalize_email(user.email):
+            if not requested_email:
+                _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email del alumno.")
+            if _user_email_taken(db, requested_email, except_user_id=user.id):
+                _error(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "Ese email ya pertenece a otra cuenta. Elegí un email distinto.",
+                )
+            user.email = requested_email
+        if password:
+            user.password_hash = hash_password(password)
+            user.role = "alumno"
+        student.email = (user.email or "").strip() or None
+    else:
+        if email_sent:
+            student.email = requested_email
+        profile_email = (student.email or "").strip() or None
+        if password:
+            if not profile_email:
+                _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Indicá el email para crear o actualizar el acceso.")
+            existing_user = db.scalar(select(User).where(func.lower(User.email) == profile_email.lower()))
+            if existing_user is not None:
+                linked = db.scalar(
+                    select(StudioStudent).where(
+                        StudioStudent.user_id == existing_user.id,
+                        StudioStudent.id != student.id,
+                    )
+                )
+                if linked is not None:
+                    _error(status.HTTP_409_CONFLICT, "Ese email ya pertenece a otra cuenta.")
+                student.user_id = existing_user.id
+                existing_user.password_hash = hash_password(password)
+                existing_user.role = "alumno"
+                student.email = existing_user.email
+            else:
+                user = User(email=profile_email, password_hash=hash_password(password), role="alumno")
+                db.add(user)
+                db.flush()
+                student.user_id = user.id
+                student.email = user.email
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _error(status.HTTP_409_CONFLICT, "Conflicto al guardar el alumno (email duplicado).")
+    db.refresh(student)
     return student_to_response(db, student)
 
 
@@ -1042,9 +1296,10 @@ def mass_cancel_session(db: Session, session_id: UUID, actor_user_id: UUID | Non
     session.status = "cancelled"
     bookings = db.scalars(select(Booking).where(Booking.session_id == session.id, Booking.status == "booked").with_for_update()).all()
     for booking in bookings:
-        pack = db.scalar(select(StudentPack).where(StudentPack.id == booking.pack_id).with_for_update())
-        if pack:
-            pack.remaining_credits += 1
+        if booking.pack_id:
+            pack = db.scalar(select(StudentPack).where(StudentPack.id == booking.pack_id).with_for_update())
+            if pack:
+                pack.remaining_credits += 1
         booking.status = "cancelled"
         booking.cancelled_at = datetime.now(timezone.utc)
     write_audit(db, actor_user_id, "mass_cancel", "class_session", session.id, {"returned_bookings": len(bookings)})
@@ -1121,9 +1376,10 @@ def cancel_booking(db: Session, booking_id: UUID, actor_user_id: UUID | None = N
         _error(status.HTTP_404_NOT_FOUND, "Booking not found")
     if booking.status == "cancelled":
         return booking
-    pack = db.scalar(select(StudentPack).where(StudentPack.id == booking.pack_id).with_for_update())
-    if pack:
-        pack.remaining_credits += 1
+    if booking.pack_id:
+        pack = db.scalar(select(StudentPack).where(StudentPack.id == booking.pack_id).with_for_update())
+        if pack:
+            pack.remaining_credits += 1
     booking.status = "cancelled"
     booking.cancelled_at = datetime.now(timezone.utc)
     write_audit(db, actor_user_id, "cancel_booking", "booking", booking.id, None)

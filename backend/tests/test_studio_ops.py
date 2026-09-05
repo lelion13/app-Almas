@@ -225,6 +225,21 @@ def test_tile_open_window_by_duration():
     assert tile_open_window(time(8, 0), time(8, 30), 60) == []
 
 
+def test_student_create_password_requires_email():
+    from app.schemas.studio import StudentCreate
+
+    with pytest.raises(ValidationError):
+        StudentCreate(full_name="Ana", password="secret123")
+
+
+def test_student_create_without_access_ok():
+    from app.schemas.studio import StudentCreate
+
+    body = StudentCreate(full_name="Ana")
+    assert body.email is None
+    assert body.password is None
+
+
 def test_calendar_schedule_create_schema():
     from uuid import uuid4
     from app.schemas.studio import CalendarScheduleCreate
@@ -242,3 +257,15 @@ def test_calendar_schedule_create_schema():
     )
     assert body.weekday == 1
     assert body.duration_minutes == 60
+
+
+def test_calendar_enroll_create_schema():
+    from uuid import uuid4
+    from app.schemas.studio import CalendarEnrollCreate
+
+    body = CalendarEnrollCreate(
+        series_id=uuid4(),
+        session_date=date(2026, 9, 8),
+        student_id=uuid4(),
+    )
+    assert body.session_date.isoformat() == "2026-09-08"

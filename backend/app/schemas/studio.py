@@ -188,11 +188,22 @@ class InstructorCreate(BaseModel):
         return self
 
 
-class StudentCreate(ProfileCreate):
+class StudentCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=255)
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=64)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    active: bool = True
     document_id: str | None = Field(default=None, max_length=64)
     emergency_contact: str | None = Field(default=None, max_length=255)
     emergency_phone: str | None = Field(default=None, max_length=64)
     medical_notes: str | None = None
+
+    @model_validator(mode="after")
+    def password_requires_email(self):
+        if self.password and not (self.email or "").strip():
+            raise ValueError("email is required when password is supplied")
+        return self
 
 
 class ProfilePatch(BaseModel):
@@ -212,6 +223,7 @@ class StudentPatch(ProfilePatch):
     emergency_contact: str | None = Field(default=None, max_length=255)
     emergency_phone: str | None = Field(default=None, max_length=64)
     medical_notes: str | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 class ProfileResponse(ORMModel):
@@ -390,7 +402,7 @@ class BookingResponse(ORMModel):
     id: UUID
     student_id: UUID
     session_id: UUID
-    pack_id: UUID
+    pack_id: UUID | None
     source: str
     status: str
     created_at: datetime
@@ -470,6 +482,12 @@ class CalendarHolidayInfo(BaseModel):
     site_id: UUID | None = None
 
 
+class CalendarEnrolledStudent(BaseModel):
+    student_id: UUID
+    student_name: str
+    booking_id: UUID
+
+
 class CalendarSlot(BaseModel):
     site_id: UUID
     site_name: str
@@ -484,6 +502,9 @@ class CalendarSlot(BaseModel):
     series_id: UUID | None = None
     instructor_id: UUID | None = None
     instructor_name: str | None = None
+    booked_count: int = 0
+    remaining_capacity: int | None = None
+    enrolled: list[CalendarEnrolledStudent] = Field(default_factory=list)
 
 
 class CalendarDay(BaseModel):
@@ -511,3 +532,10 @@ class CalendarScheduleCreate(BaseModel):
     duration_minutes: int = Field(ge=1)
     capacity: int = Field(ge=1)
     level: str = Field(default="inicial", max_length=32)
+
+
+class CalendarEnrollCreate(BaseModel):
+    """Admin one-off student enroll for a calendar date (no pack)."""
+    series_id: UUID
+    session_date: date
+    student_id: UUID

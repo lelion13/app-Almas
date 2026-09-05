@@ -1,8 +1,8 @@
 # Studio Ops — lecciones y decisiones de implementación
 
 Specs (fuente de verdad): `openspec/specs/studio-*.md`, `auth`, `platform`, `deployment`.  
-Archives: `openspec/changes/archive/2026-08-10-studio-ops-mvp/`, `2026-08-11-studio-sites-edit-maps/`, `2026-08-12-studio-rooms-edit-hours/`, `2026-08-27-studio-activities-rooms-edit/`, `2026-09-02-studio-instructors-edit/`, `2026-09-04-studio-schedule-pause/`.  
-Active change: `openspec/changes/studio-calendar/`.
+Archives: `…/2026-09-04-studio-schedule-pause/`, `…/2026-09-04-studio-calendar/`.  
+Active change: `openspec/changes/studio-students-calendar-enroll/`.
 
 ## Convivencia de producto
 
@@ -12,19 +12,34 @@ Active change: `openspec/changes/studio-calendar/`.
 
 ## Agenda / paquetes en pausa (`studio-schedule-pause`)
 
-- Flag env: **`STUDIO_SCHEDULE_PAUSED`** (default `true`). APIs de series, sesiones, packs, book/waitlist/attendance y portales instructor/alumno → **410**.
+- Flag env: **`STUDIO_SCHEDULE_PAUSED`** (default `true`). APIs de series (list/CRUD vía `/series`), sesiones, packs, book/waitlist/attendance y portales instructor/alumno → **410**.
 - UI Estudio: tabs ocultas Series / Sesiones / Productos / Paquetes. Catálogo (sedes…alumnos) + feriados + auditoría siguen.
+- **Carve-out Calendario:** `GET /calendar/availability` y `POST /calendar/schedule` **no** dan 410 (pueden crear/actualizar `ClassSeries`).
 - Portales alumno/instructor: stub “en reconstrucción” (sin llamadas a APIs pausadas).
-- Datos y tablas **conservados**. Rollback: `STUDIO_SCHEDULE_PAUSED=false` + redeploy.
-- Rebuild de turnos = change futuro (schedule + entitlement + book como un stack).
+- Datos y tablas **conservados**. Rollback pause: `STUDIO_SCHEDULE_PAUSED=false` + redeploy.
 
-## Calendario de disponibilidad (`studio-calendar`)
+## Calendario de disponibilidad (`studio-calendar`) — shipped
 
-- Tab **Calendario** (vista semana): franjas = horario abierto del salón mosaicoado por `default_duration_minutes` de cada actividad vinculada; muestra **capacidad** del salón.
-- Filtros en cascada: sede → salones; actividad limita a `room_ids`.
-- API: `GET /api/v1/studio/calendar/availability` (admin; **no** bloqueada por pause).
-- Clic en franja → modal: elegir **instructor** filtrado por `activity_ids`; `POST /calendar/schedule` crea o actualiza la serie. La franja muestra el instructor asignado al reabrir.
-- Feriados: día visible atenuado.
+Fuente de verdad: `openspec/specs/studio-scheduling/spec.md` (requisitos Calendario + asignación).
+
+| Pieza | Detalle |
+|--------|---------|
+| UI | Tab **Calendario** (primera en Estudio); semana lun–dom; filtros cascada sede → salones; actividad limita `room_ids` |
+| Franjas | Horario abierto del salón ÷ `default_duration_minutes` de cada actividad vinculada; muestra **capacidad** |
+| Overlay | Series activas con mismo room+activity+weekday+start → `instructor_name` en celda y modal |
+| Modal | Instructores activos con esa actividad en `activity_ids`; Confirmar/Actualizar |
+| Alumnos | Con serie asignada: listar inscritos del día; asignar alumno si `remaining_capacity > 0` (sin pack) vía `POST /calendar/enroll` |
+| APIs | `GET …/calendar/availability`, `POST …/calendar/schedule`, `POST …/calendar/enroll` |
+| Weekday | **0=domingo … 6=sábado** (igual que horarios de salón) |
+| Feriados | Día visible atenuado; enroll en feriado → 422 |
+| Pause | Endpoints de calendario **exentos** del 410 |
+
+## Alumnos UX (`studio-students-calendar-enroll`) — in progress
+
+- Un solo campo **Email** (contacto = login), como instructores.
+- Crear: email/contraseña visibles, vacíos, opcionales.
+- Grilla: Editar + Eliminar soft a la derecha.
+- Alembic **015**: `studio_bookings.pack_id` nullable + align emails alumno↔user.
 
 ## Modelo de créditos (shipped, en pausa operativa)
 

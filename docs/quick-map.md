@@ -6,13 +6,13 @@ Fast navigation for app-Almas. **Behavioral source of truth:** `openspec/specs/*
 ## SDD (OpenSpec)
 - Config: `openspec/config.yaml`
 - Domains: `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `platform`, `mercado-pago`, `studio-sites`, `studio-scheduling`, `studio-students`, `studio-packs`, `studio-audit`
-- Active changes: `openspec/changes/{name}/` (none as of 2026-08-12) → archive merges into main specs
-- Studio lessons: `docs/studio-ops-lessons.md` (archives `2026-08-10-studio-ops-mvp`, `2026-08-11-studio-sites-edit-maps`, `2026-08-12-studio-rooms-edit-hours`)
+- Active changes: `openspec/changes/{name}/` (none as of 2026-09-04) → archive merges into main specs
+- Studio lessons: `docs/studio-ops-lessons.md` (incl. pause + **Calendario**; latest archive `2026-09-04-studio-calendar`)
 - MP Conciliación lessons: `docs/mp-conciliation-lessons.md`
 - Skill registry: `.atl/skill-registry.md`
 
 ## Suggested Structure
-- `frontend/src/components/` reusable UI components.
+- `frontend/src/components/` reusable UI (e.g. `StudioCalendarPanel`).
 - `frontend/src/pages/` page-level screens.
 - `frontend/src/hooks/` reusable UI/business hooks.
 - `frontend/src/services/` API clients and request helpers.
