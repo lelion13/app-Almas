@@ -15,6 +15,9 @@ type CalendarSlot = {
   end_time: string;
   duration_minutes: number;
   capacity: number;
+  series_id?: string | null;
+  instructor_id?: string | null;
+  instructor_name?: string | null;
 };
 type CalendarDay = {
   date: string;
@@ -91,6 +94,8 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
   const [modalError, setModalError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [reloadToken, setReloadToken] = useState(0);
+
   const activeSites = sites.filter((site) => site.active !== false);
   const activeActivities = activities.filter((activity) => activity.active !== false);
   const filteredRooms = rooms.filter((room) => {
@@ -156,11 +161,11 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
     return () => {
       cancelled = true;
     };
-  }, [weekAnchor, siteId, roomId, activityId]);
+  }, [weekAnchor, siteId, roomId, activityId, reloadToken]);
 
   function openSlot(day: CalendarDay, slot: CalendarSlot) {
     setSelected({ day, slot });
-    setInstructorId("");
+    setInstructorId(slot.instructor_id ? String(slot.instructor_id) : "");
     setModalError(null);
     setNotice(null);
   }
@@ -199,10 +204,13 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
         }),
       });
       setNotice(
-        `Clase asignada: ${selected.slot.activity_name} · ${toHm(selected.slot.start_time)} · ${WEEKDAY_LABELS[selected.day.weekday] ?? ""}`,
+        selected.slot.series_id
+          ? `Instructor actualizado: ${selected.slot.activity_name} · ${toHm(selected.slot.start_time)}`
+          : `Clase asignada: ${selected.slot.activity_name} · ${toHm(selected.slot.start_time)} · ${WEEKDAY_LABELS[selected.day.weekday] ?? ""}`,
       );
       setSelected(null);
       setInstructorId("");
+      setReloadToken((n) => n + 1);
     } catch (e) {
       setModalError(e instanceof ApiError ? e.message : "No se pudo asignar la clase.");
     } finally {
@@ -333,12 +341,18 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
                     )}
                   </div>
                   <ul className="flex flex-1 flex-col gap-1.5 overflow-y-auto">
-                    {day.slots.map((slot) => (
+                    {day.slots.map((slot) => {
+                      const assigned = Boolean(slot.series_id && slot.instructor_name);
+                      return (
                       <li key={`${slot.room_id}-${slot.activity_id}-${slot.start_time}`}>
                         <button
                           type="button"
                           onClick={() => openSlot(day, slot)}
-                          className="w-full rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5 text-left text-[11px] leading-snug text-slate-700 hover:border-brand-300 hover:bg-brand-50"
+                          className={`w-full rounded-lg border px-2 py-1.5 text-left text-[11px] leading-snug hover:border-brand-300 hover:bg-brand-50 ${
+                            assigned
+                              ? "border-brand-200 bg-brand-50 text-slate-800"
+                              : "border-slate-100 bg-slate-50 text-slate-700"
+                          }`}
                         >
                           <div className="font-semibold text-slate-900">
                             {toHm(slot.start_time)}–{toHm(slot.end_time)}
@@ -347,10 +361,16 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
                           <div className="text-slate-500">
                             {slot.room_name} · cupo {slot.capacity}
                           </div>
+                          {assigned ? (
+                            <div className="mt-0.5 font-medium text-brand-800">{slot.instructor_name}</div>
+                          ) : (
+                            <div className="mt-0.5 text-slate-400">Sin instructor</div>
+                          )}
                           {!siteId && <div className="text-slate-400">{slot.site_name}</div>}
                         </button>
                       </li>
-                    ))}
+                      );
+                    })}
                     {!day.slots.length && (
                       <li className="text-[11px] text-slate-400">Sin franjas</li>
                     )}
@@ -375,8 +395,13 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="calendar-slot-title" className="text-lg font-semibold text-slate-900">
-              Asignar instructor
+              {selected.slot.series_id ? "Editar asignación" : "Asignar instructor"}
             </h3>
+            {selected.slot.instructor_name && (
+              <p className="mt-1 text-sm text-brand-800">
+                Asignado: <span className="font-medium">{selected.slot.instructor_name}</span>
+              </p>
+            )}
             <dl className="mt-3 space-y-1.5 text-sm text-slate-700">
               <div className="flex justify-between gap-3">
                 <dt className="text-slate-500">Día</dt>
@@ -451,7 +476,7 @@ export default function StudioCalendarPanel({ sites, rooms, activities, instruct
                 onClick={() => void confirmSchedule()}
                 disabled={saving || !instructorsForSelected.length}
               >
-                {saving ? "Guardando…" : "Confirmar"}
+                {saving ? "Guardando…" : selected.slot.series_id ? "Actualizar" : "Confirmar"}
               </button>
             </div>
           </div>

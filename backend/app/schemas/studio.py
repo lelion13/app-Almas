@@ -481,6 +481,9 @@ class CalendarSlot(BaseModel):
     end_time: time
     duration_minutes: int
     capacity: int
+    series_id: UUID | None = None
+    instructor_id: UUID | None = None
+    instructor_name: str | None = None
 
 
 class CalendarDay(BaseModel):

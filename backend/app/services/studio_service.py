@@ -454,6 +454,30 @@ def build_calendar_availability(
         ).all()
     )
 
+    # Active series overlay keyed by (room_id, activity_id, weekday, start_minutes)
+    series_index: dict[tuple[UUID, UUID, int, int], ClassSeries] = {}
+    instructor_names: dict[UUID, str] = {}
+    if room_ids:
+        series_rows = list(
+            db.scalars(
+                select(ClassSeries).where(
+                    ClassSeries.active.is_(True),
+                    ClassSeries.room_id.in_(room_ids),
+                )
+            ).all()
+        )
+        instructor_ids = {row.instructor_id for row in series_rows}
+        if instructor_ids:
+            for instructor in db.scalars(
+                select(StudioInstructor).where(StudioInstructor.id.in_(instructor_ids))
+            ).all():
+                instructor_names[instructor.id] = instructor.full_name
+        for row in series_rows:
+            if activity_id is not None and row.activity_id != activity_id:
+                continue
+            key = (row.room_id, row.activity_id, int(row.weekday), _to_minutes(row.start_time))
+            series_index[key] = row
+
     days: list[CalendarDay] = []
     for offset in range(7):
         day = start + timedelta(days=offset)
@@ -481,6 +505,7 @@ def build_calendar_availability(
                 if int(hour_row.weekday) != wd:
                     continue
                 for start_t, end_t in tile_open_window(hour_row.open_time, hour_row.close_time, duration):
+                    assigned = series_index.get((room.id, activity.id, wd, _to_minutes(start_t)))
                     slots.append(
                         CalendarSlot(
                             site_id=site.id,
@@ -493,6 +518,11 @@ def build_calendar_availability(
                             end_time=end_t,
                             duration_minutes=duration,
                             capacity=int(room.capacity),
+                            series_id=assigned.id if assigned else None,
+                            instructor_id=assigned.instructor_id if assigned else None,
+                            instructor_name=(
+                                instructor_names.get(assigned.instructor_id) if assigned else None
+                            ),
                         )
                     )
         slots.sort(key=lambda s: (s.start_time, s.site_name, s.room_name, s.activity_name))
@@ -512,7 +542,7 @@ def build_calendar_availability(
 
 
 def schedule_from_calendar(db: Session, values: dict[str, Any]) -> ClassSeries:
-    """Create a class series from a calendar slot; instructor must teach the activity."""
+    """Create or update a class series from a calendar slot; instructor must teach the activity."""
     instructor = _get(db, StudioInstructor, values["instructor_id"], "Instructor")
     if not instructor.active:
         _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Instructor is inactive")
@@ -522,6 +552,28 @@ def schedule_from_calendar(db: Session, values: dict[str, Any]) -> ClassSeries:
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "El instructor no está vinculado a esta actividad",
         )
+
+    existing = db.scalar(
+        select(ClassSeries).where(
+            ClassSeries.active.is_(True),
+            ClassSeries.room_id == values["room_id"],
+            ClassSeries.activity_id == values["activity_id"],
+            ClassSeries.weekday == values["weekday"],
+            ClassSeries.start_time == values["start_time"],
+        )
+    )
+    if existing is not None:
+        existing.instructor_id = values["instructor_id"]
+        if values.get("capacity") is not None:
+            existing.capacity = values["capacity"]
+        if values.get("duration_minutes") is not None:
+            existing.duration_minutes = values["duration_minutes"]
+        if values.get("level"):
+            existing.level = values["level"]
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     payload = {
         "site_id": values["site_id"],
         "room_id": values["room_id"],
