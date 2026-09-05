@@ -495,3 +495,16 @@ class CalendarAvailabilityResponse(BaseModel):
     week_start: date
     week_end: date
     days: list[CalendarDay]
+
+
+class CalendarScheduleCreate(BaseModel):
+    """Assign an instructor to a catalog availability slot (creates a class series)."""
+    site_id: UUID
+    room_id: UUID
+    activity_id: UUID
+    instructor_id: UUID
+    weekday: int = Field(ge=0, le=6, description="0=Sunday .. 6=Saturday (room-hours convention)")
+    start_time: time
+    duration_minutes: int = Field(ge=1)
+    capacity: int = Field(ge=1)
+    level: str = Field(default="inicial", max_length=32)

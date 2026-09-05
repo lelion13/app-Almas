@@ -511,6 +511,32 @@ def build_calendar_availability(
     return CalendarAvailabilityResponse(week_start=start, week_end=end, days=days)
 
 
+def schedule_from_calendar(db: Session, values: dict[str, Any]) -> ClassSeries:
+    """Create a class series from a calendar slot; instructor must teach the activity."""
+    instructor = _get(db, StudioInstructor, values["instructor_id"], "Instructor")
+    if not instructor.active:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Instructor is inactive")
+    allowed = set(get_instructor_activity_ids(db, instructor.id))
+    if values["activity_id"] not in allowed:
+        _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "El instructor no está vinculado a esta actividad",
+        )
+    payload = {
+        "site_id": values["site_id"],
+        "room_id": values["room_id"],
+        "activity_id": values["activity_id"],
+        "instructor_id": values["instructor_id"],
+        "weekday": values["weekday"],
+        "start_time": values["start_time"],
+        "duration_minutes": values["duration_minutes"],
+        "capacity": values["capacity"],
+        "level": values.get("level") or "inicial",
+        "active": True,
+    }
+    return create_series(db, payload)
+
+
 def get_activity_room_ids(db: Session, activity_id: UUID) -> list[UUID]:
     rows = db.scalars(
         select(StudioActivityRoom.room_id).where(StudioActivityRoom.activity_id == activity_id)

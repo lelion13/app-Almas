@@ -15,6 +15,7 @@ from app.models.studio import (
 from app.schemas.studio import (
     ActivityCreate, ActivityPatch, ActivityResponse, AttendanceResponse, AttendanceSet,
     AuditResponse, BookingCreate, BookingResponse, CalendarAvailabilityResponse,
+    CalendarScheduleCreate,
     FixedEnrollmentCreate,
     FixedEnrollmentResponse, HolidayCreate, HolidayResponse, InstructorCreate,
     InstructorPatch, InstructorResponse, PackAssign, PackProductCreate, PackProductPatch,
@@ -103,7 +104,7 @@ def calendar_availability(
     room_id: UUID | None = None,
     activity_id: UUID | None = None,
 ):
-    """Read-only catalog availability; not gated by STUDIO_SCHEDULE_PAUSED."""
+    """Catalog availability; not gated by STUDIO_SCHEDULE_PAUSED."""
     return service.build_calendar_availability(
         db,
         week_start=week_start,
@@ -111,6 +112,12 @@ def calendar_availability(
         room_id=room_id,
         activity_id=activity_id,
     )
+
+
+@router.post("/calendar/schedule", response_model=SeriesResponse, status_code=status.HTTP_201_CREATED)
+def calendar_schedule(body: CalendarScheduleCreate, _admin: AdminOnly, db: Session = Depends(get_db)):
+    """Assign instructor to a calendar slot (creates series). Not gated by schedule pause."""
+    return service.schedule_from_calendar(db, body.model_dump())
 
 
 @router.get("/activities", response_model=list[ActivityResponse])

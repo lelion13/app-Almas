@@ -690,6 +690,7 @@ export default function StudioAdminPage() {
           sites={list("sites")}
           rooms={list("roomsAll")}
           activities={list("activities")}
+          instructors={list("instructors")}
         />
       )}
 

@@ -23,7 +23,8 @@ Active change: `openspec/changes/studio-calendar/`.
 - Tab **Calendario** (vista semana): franjas = horario abierto del salón mosaicoado por `default_duration_minutes` de cada actividad vinculada; muestra **capacidad** del salón.
 - Filtros en cascada: sede → salones; actividad limita a `room_ids`.
 - API: `GET /api/v1/studio/calendar/availability` (admin; **no** bloqueada por pause).
-- Feriados: día visible atenuado. Solo lectura (reserva después).
+- Clic en franja → modal: elegir **instructor** filtrado por `activity_ids` de esa actividad; `POST /api/v1/studio/calendar/schedule` crea la serie (tampoco bloqueada por pause).
+- Feriados: día visible atenuado.
 
 ## Modelo de créditos (shipped, en pausa operativa)
 

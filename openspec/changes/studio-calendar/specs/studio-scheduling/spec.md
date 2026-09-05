@@ -34,3 +34,19 @@ MVP MUST be read-only (no booking or series create from this view).
 - **GIVEN** a holiday on date D in the requested week
 - **WHEN** admin views the calendar
 - **THEN** day D MUST be visible and marked as feriado
+
+### Requirement: Calendar slot instructor assignment
+
+Admin MUST open a modal when clicking an availability slot. The modal MUST allow selecting an instructor from active instructors whose `activity_ids` include the slot’s activity. Confirming MUST create a class series for that site/room/activity/weekday/start/duration/capacity via `POST /api/v1/studio/calendar/schedule`, which MUST remain available while schedule pause is enabled. If the instructor is not linked to the activity, the API MUST return `422`.
+
+#### Scenario: Filter instructors by activity
+- **GIVEN** slot for activity Yoga
+- **AND** instructor A linked to Yoga and instructor B linked only to Pilates
+- **WHEN** admin opens the slot modal
+- **THEN** the instructor list MUST include A and MUST NOT include B
+
+#### Scenario: Schedule from calendar under pause
+- **GIVEN** `STUDIO_SCHEDULE_PAUSED` is true
+- **WHEN** admin confirms a slot with a valid instructor
+- **THEN** `POST /api/v1/studio/calendar/schedule` MUST succeed (not `410`)
+- **AND** a class series MUST be created

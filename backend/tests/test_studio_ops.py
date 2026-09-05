@@ -223,3 +223,22 @@ def test_tile_open_window_by_duration():
     assert slots == [(time(8, 0), time(9, 0)), (time(9, 0), time(10, 0))]
     assert tile_open_window(time(8, 0), time(9, 30), 60) == [(time(8, 0), time(9, 0))]
     assert tile_open_window(time(8, 0), time(8, 30), 60) == []
+
+
+def test_calendar_schedule_create_schema():
+    from uuid import uuid4
+    from app.schemas.studio import CalendarScheduleCreate
+
+    body = CalendarScheduleCreate(
+        site_id=uuid4(),
+        room_id=uuid4(),
+        activity_id=uuid4(),
+        instructor_id=uuid4(),
+        weekday=1,
+        start_time=time(9, 0),
+        duration_minutes=60,
+        capacity=10,
+        level="inicial",
+    )
+    assert body.weekday == 1
+    assert body.duration_minutes == 60

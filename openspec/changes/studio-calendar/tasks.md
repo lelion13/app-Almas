@@ -13,6 +13,7 @@
 ## Phase 3: Frontend
 - [x] 3.1 Tab Calendario + `StudioCalendarPanel` (week nav, cascade filters)
 - [x] 3.2 Attenuated holiday days; empty state
+- [x] 3.3 Slot click → modal: instructor filtered by activity; confirm → schedule API
 
 ## Phase 4: Docs & verify
 - [x] 4.1 Update `studio-ops-lessons.md` + `runbook.md`
