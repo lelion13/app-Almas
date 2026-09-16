@@ -73,7 +73,9 @@ export default function StudioStudentAbonosModal({ student, onClose }: Props) {
     setExtraPay("");
     const rows = await apiFetch<Eligible[]>(`/api/v1/studio/abonos/${abono.id}/eligible-bookings`);
     setEligible(rows);
-    setSelectedBookings(rows.filter((r) => r.covered).map((r) => r.booking_id));
+    const covered = rows.filter((r) => r.covered).map((r) => r.booking_id);
+    // Fresh period: all checked. After save: keep what was covered (destilds persist).
+    setSelectedBookings(covered.length ? covered : rows.map((r) => r.booking_id));
   }
 
   function toggleSeries(id: string) {
@@ -267,7 +269,7 @@ export default function StudioStudentAbonosModal({ student, onClose }: Props) {
                 })}
               </div>
               <div className="mt-3 space-y-1">
-                <div className="text-xs font-medium text-slate-600">Turnos elegibles del periodo</div>
+                <div className="text-xs font-medium text-slate-600">Turnos elegibles del periodo (todos cubiertos por defecto; destildá si alguno no entra en el abono)</div>
                 {!eligible.length ? (
                   <p className="text-xs text-slate-500">No hay turnos elegibles (o aún no hay series).</p>
                 ) : eligible.map((row) => (
