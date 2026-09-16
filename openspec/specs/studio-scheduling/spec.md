@@ -9,7 +9,7 @@ Activities, recurring series, session materialization, holidays, instructors’ 
 
 While `STUDIO_SCHEDULE_PAUSED` is enabled, the system MUST NOT expose operational schedule APIs for series list/create/patch/delete, session expand, session list, or mass-cancel. Those endpoints MUST respond with **410 Gone** and a clear Spanish detail that agenda/paquetes are under reconstruction.
 
-**Carve-out:** `GET /api/v1/studio/calendar/availability` and `POST /api/v1/studio/calendar/schedule` MUST remain available (not 410) so Estudio Calendario can show catalog availability and assign instructors (creates/updates `ClassSeries` rows).
+**Carve-out:** `GET /api/v1/studio/calendar/availability`, `POST /api/v1/studio/calendar/schedule`, and `POST /api/v1/studio/calendar/enroll` MUST remain available (not 410) so Estudio Calendario can show catalog availability, assign instructors (creates/updates `ClassSeries`), and assign students for a date (creates `ClassSession` + `Booking` without pack).
 
 Catalog endpoints (sites, rooms, hours, activities, instructors, students, holidays, audit) MUST remain available.
 
@@ -32,7 +32,7 @@ Estudio admin UI MUST NOT show tabs **Series** or **Sesiones**.
 
 #### Scenario: Calendar carve-out under pause
 - **GIVEN** pause enabled
-- **WHEN** admin calls `GET /api/v1/studio/calendar/availability` or `POST /api/v1/studio/calendar/schedule`
+- **WHEN** admin calls `GET /api/v1/studio/calendar/availability`, `POST /api/v1/studio/calendar/schedule`, or `POST /api/v1/studio/calendar/enroll`
 - **THEN** the response MUST NOT be `410` solely due to the pause gate
 
 ### Requirement: Estudio calendar availability
@@ -46,6 +46,8 @@ Weekday for hours and series MUST use **0=Sunday … 6=Saturday** (same as room-
 Holidays in the week MUST still show the day column, marked as feriado (attenuated in UI). Slots MAY still appear.
 
 Active class series MUST be overlaid onto matching slots (`room_id` + `activity_id` + `weekday` + `start_time`). Overlay fields MUST include `series_id`, `instructor_id`, and `instructor_name` when assigned. Unassigned slots MUST be distinguishable in the UI.
+
+Assigned slots MUST also expose capacity occupancy for that calendar date: `capacity` (from series), `booked_count`, `remaining_capacity`, and `enrolled` (student id/name/booking id for active bookings). Capacity shown for unassigned slots MUST be the room capacity.
 
 #### Scenario: Tile slots by activity duration
 - **GIVEN** room open 08:00–10:00 and activity duration 60 linked to that room
@@ -63,6 +65,12 @@ Active class series MUST be overlaid onto matching slots (`room_id` + `activity_
 - **WHEN** admin loads the calendar week
 - **THEN** the matching slot MUST include `instructor_name` for I
 - **AND** reopening the slot modal MUST preselect I
+
+#### Scenario: Capacity on assigned slot
+- **GIVEN** an assigned series with capacity 8 and 2 active bookings on date D
+- **WHEN** availability is loaded for the week containing D
+- **THEN** the matching slot for D MUST report `booked_count=2` and `remaining_capacity=6`
+- **AND** `enrolled` MUST list those students
 
 #### Scenario: Holiday day attenuated
 - **GIVEN** a holiday on date D in the requested week
@@ -92,6 +100,15 @@ If a matching active series already exists (same room, activity, weekday, start_
 - **WHEN** admin selects a different valid instructor and confirms
 - **THEN** the same series MUST be updated
 - **AND** a second series for that slot MUST NOT be created
+
+### Requirement: Calendar slot student assignment UI
+
+When a slot already has `series_id`, the slot modal MUST allow assigning students for the selected date subject to capacity (see `studio-students` calendar enroll). The UI MUST show enrolled students for that day and MUST disable enroll when `remaining_capacity` is 0. Enroll MUST use `POST /api/v1/studio/calendar/enroll`.
+
+#### Scenario: Modal shows enroll when assigned
+- **GIVEN** a slot with instructor and remaining capacity > 0
+- **WHEN** admin opens the modal
+- **THEN** an alumno selector and assign action MUST be available
 
 ### Requirement: Activities
 

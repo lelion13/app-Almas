@@ -182,47 +182,68 @@ class StudioHoliday(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class PackProduct(Base):
-    __tablename__ = "studio_pack_products"
+class StudioArancel(Base):
+    __tablename__ = "studio_aranceles"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    class_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    validity_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
-    price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    is_trial: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    classes_per_week: Mapped[int] = mapped_column(Integer, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class StudentPack(Base):
-    __tablename__ = "studio_student_packs"
+class StudioArancelActivity(Base):
+    __tablename__ = "studio_arancel_activities"
+
+    arancel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_aranceles.id", ondelete="CASCADE"), primary_key=True
+    )
+    activity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_activities.id"), primary_key=True
+    )
+
+
+class StudioAbono(Base):
+    __tablename__ = "studio_abonos"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_students.id"), nullable=False)
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("studio_pack_products.id"), nullable=False
-    )
-    remaining_credits: Mapped[int] = mapped_column(Integer, nullable=False)
+    arancel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_aranceles.id"), nullable=False)
+    agreed_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    paid_on: Mapped[date] = mapped_column(Date, nullable=False)
     starts_on: Mapped[date] = mapped_column(Date, nullable=False)
-    expires_on: Mapped[date] = mapped_column(Date, nullable=False)
-    scope: Mapped[str] = mapped_column(String(32), nullable=False)  # all_sedes | one_sede
-    site_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_sites.id"), nullable=True)
-    payment_method: Mapped[str] = mapped_column(String(32), nullable=False, default="efectivo")
-    payment_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pagado")
+    ends_on: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")  # active|annulled
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    annulled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    annulled_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
-class FixedEnrollment(Base):
-    __tablename__ = "studio_fixed_enrollments"
-    __table_args__ = (UniqueConstraint("student_id", "series_id", name="uq_studio_fixed_enrollment"),)
+class StudioAbonoSeries(Base):
+    __tablename__ = "studio_abono_series"
+
+    abono_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_abonos.id", ondelete="CASCADE"), primary_key=True
+    )
+    series_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_class_series.id"), primary_key=True
+    )
+
+
+class StudioAbonoPayment(Base):
+    __tablename__ = "studio_abono_payments"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_students.id"), nullable=False)
-    series_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_class_series.id"), nullable=False)
-    pack_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_student_packs.id"), nullable=False)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    abono_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_abonos.id", ondelete="CASCADE"), nullable=False
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    paid_on: Mapped[date] = mapped_column(Date, nullable=False)
+    method: Mapped[str] = mapped_column(String(32), nullable=False, default="efectivo")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -235,10 +256,10 @@ class Booking(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("studio_class_sessions.id"), nullable=False
     )
-    pack_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("studio_student_packs.id"), nullable=True
+    abono_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_abonos.id"), nullable=True
     )
-    source: Mapped[str] = mapped_column(String(32), nullable=False, default="mobile")  # fixed|mobile|waitlist|calendar
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="mobile")  # mobile|waitlist|calendar
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="booked")  # booked|cancelled
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

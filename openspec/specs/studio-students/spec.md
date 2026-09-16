@@ -11,6 +11,8 @@ While `STUDIO_SCHEDULE_PAUSED` is enabled, fixed-enrollment, booking cancel (adm
 
 Student profile CRUD (admin Estudio → Alumnos) MUST remain available.
 
+**Carve-out:** `POST /api/v1/studio/calendar/enroll` MUST remain available (admin one-off enroll without pack). See `studio-scheduling`.
+
 Alumno UI (`/mis-clases` and RoleIndex for `alumno`) MUST show a reconstruction stub and MUST NOT call paused `/me/*` booking APIs.
 
 #### Scenario: Alumno portal stub
@@ -26,7 +28,76 @@ Alumno UI (`/mis-clases` and RoleIndex for `alumno`) MUST show a reconstruction 
 
 ### Requirement: Student profiles
 
-Admin MUST CRUD students with personal data, optional contact/document/emergency/medical fields. A student MAY be linked to a User with role `alumno` when `login_email` + `password` are provided together at create. `StudentResponse` MUST NOT inherit instructor-only fields (e.g. `activity_ids`); student list endpoints MUST serialize via a dedicated student response builder.
+Admin MUST CRUD students with personal data and optional document/emergency/medical fields.
+
+**Email (unified):** UI and write APIs MUST use a **single `email` field** (contact and login), matching instructors. Creating or updating login MUST use `email` + optional `password` (password requires email; min length 8). When a User is linked, response `email` MUST be the canonical login email; `login_email` in the response MAY equal that same value when linked (compatibility) and MUST be null when there is no login.
+
+Profile-only edits MUST allow omitting `email` when unchanged (PATCH omit). Explicit email change MUST sync `User.email`. Attempting to use an email owned by another User MUST return `409`/`422` with a clear Spanish message.
+
+`StudentResponse` MUST NOT inherit instructor-only fields (`activity_ids`). Student list endpoints MUST serialize via a dedicated student response builder.
+
+On Estudio → Alumnos:
+- Create form MUST show email and password as **empty optional** fields (not prefilled; autofill discouraged via `autoComplete`).
+- Each row MUST expose **Editar** (modal; validation errors inside) and **Eliminar** (soft `active=false`) on the right, consistent with Instructores.
+- Inactive students MUST remain listed and MAY be reactivated via Editar.
+
+Migration **`015`** MUST align `studio_students.email` to linked `users.email` where `user_id` is set and values diverge.
+
+#### Scenario: Create without access
+- **GIVEN** admin creates a student with name only (no email/password)
+- **WHEN** saved
+- **THEN** the student MUST exist with no `user_id`
+
+#### Scenario: Create with access
+- **GIVEN** admin creates a student with email + password (≥8)
+- **WHEN** saved
+- **THEN** a User role `alumno` MUST exist with that email
+- **AND** student `email` MUST match
+
+#### Scenario: Edit profile without changing email
+- **GIVEN** a student with linked login
+- **WHEN** admin saves Editar omitting `email`
+- **THEN** the save MUST succeed
+- **AND** `User.email` MUST remain unchanged
+
+#### Scenario: Edit and soft delete
+- **GIVEN** an existing active student
+- **WHEN** admin clicks Eliminar
+- **THEN** the student MUST have `active=false`
+- **AND** it MUST still appear on the Alumnos list as inactive
+
+### Requirement: Calendar one-off student enroll (admin)
+
+While viewing Estudio Calendario, admin MUST be able to assign an active student to a slot that already has an instructor (`series_id` present) for **that calendar date only**, when remaining capacity is greater than zero.
+
+Capacity MUST be `session.capacity − count(active bookings for that session)` (session capacity comes from the series when the session is created). Pack/credit MUST NOT be required. Booking `source` MUST be `calendar` and `pack_id` MUST be null.
+
+If no `ClassSession` exists for `(series_id, date)`, the system MUST create one from the series. If the date is a holiday (global or site-scoped for the series site), enroll MUST fail with `422`. If the session is cancelled, enroll MUST fail with `422`. Duplicate active booking for the same student/session MUST fail with `422`. Full capacity MUST fail with `422`.
+
+The enroll API `POST /api/v1/studio/calendar/enroll` MUST remain available while `STUDIO_SCHEDULE_PAUSED` is true.
+
+Cancel of a calendar booking (when cancel APIs are unpaused) MUST NOT attempt to restore credits when `pack_id` is null.
+
+#### Scenario: Enroll when capacity free
+- **GIVEN** a series slot capacity 2 with 1 active booking on date D
+- **WHEN** admin enrolls another student for D
+- **THEN** a booking MUST be created with `pack_id` null and `source=calendar`
+- **AND** remaining capacity MUST become 0
+
+#### Scenario: Reject when full
+- **GIVEN** remaining capacity 0
+- **WHEN** admin attempts enroll
+- **THEN** the response MUST be `422`
+
+#### Scenario: Reject on holiday
+- **GIVEN** date D is a holiday for the series site (or global)
+- **WHEN** admin attempts enroll for D
+- **THEN** the response MUST be `422`
+
+#### Scenario: Enroll under pause
+- **GIVEN** `STUDIO_SCHEDULE_PAUSED` is true
+- **WHEN** admin calls `POST /api/v1/studio/calendar/enroll`
+- **THEN** the response MUST NOT be `410` solely due to the pause gate
 
 ### Requirement: Fixed and mobile enrollment
 

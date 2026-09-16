@@ -33,7 +33,12 @@ Protected non-public API routes MUST require JWT. Passwords MUST be bcrypt-hashe
 
 The backend MUST read `STUDIO_SCHEDULE_PAUSED` from environment (boolean; default **true**). When true, paused studio schedule/pack/booking routes MUST return 410. When false, previous behavior MUST resume without schema changes.
 
-While pause is enabled, Estudio **Calendario** endpoints (`GET /api/v1/studio/calendar/availability`, `POST /api/v1/studio/calendar/schedule`) MUST remain usable (carve-out). See `studio-scheduling`.
+While pause is enabled, Estudio **Calendario** endpoints MUST remain usable (carve-out):
+- `GET /api/v1/studio/calendar/availability`
+- `POST /api/v1/studio/calendar/schedule`
+- `POST /api/v1/studio/calendar/enroll`
+
+See `studio-scheduling` and `studio-students`.
 
 `.env.example` / `.env.prod.example` MUST document the variable.
 
@@ -44,7 +49,7 @@ While pause is enabled, Estudio **Calendario** endpoints (`GET /api/v1/studio/ca
 
 #### Scenario: Calendar works while paused
 - **GIVEN** `STUDIO_SCHEDULE_PAUSED=true`
-- **WHEN** admin calls calendar availability or schedule
+- **WHEN** admin calls calendar availability, schedule, or enroll
 - **THEN** the response MUST NOT be `410` solely due to the pause gate
 
 ### Requirement: Spec-driven changes
@@ -62,12 +67,13 @@ Behavioral changes SHOULD go through OpenSpec (`openspec/changes/{name}/`) and m
 - `studio-sites`
 - `studio-scheduling`
 - `studio-students`
-- `studio-packs`
+- `studio-aranceles`
+- `studio-packs` (retired)
 - `studio-audit`
 
 ### Requirement: Product scope (current)
 
-In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy, admin Conciliación Mercado Pago (OAuth multi-account + on-demand **Movimientos** via Payments search), **and studio operations MVP** (multi-sede rooms/activities, students, bookings, packs, instructor/alumno portals) **coexisting** with SigueFit/closings/MP.
+In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy, admin Conciliación Mercado Pago (OAuth multi-account + on-demand **Movimientos** via Payments search), **and studio operations** (multi-sede rooms/activities, students, calendar, aranceles/abonos, instructor/alumno portals) **coexisting** with SigueFit/closings/MP.
 
 Behavioral sources of truth:
 - MP: `openspec/specs/mercado-pago/spec.md` — lessons: `docs/mp-conciliation-lessons.md`

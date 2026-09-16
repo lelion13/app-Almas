@@ -5,9 +5,9 @@ Fast navigation for app-Almas. **Behavioral source of truth:** `openspec/specs/*
 
 ## SDD (OpenSpec)
 - Config: `openspec/config.yaml`
-- Domains: `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `platform`, `mercado-pago`, `studio-sites`, `studio-scheduling`, `studio-students`, `studio-packs`, `studio-audit`
+- Domains: `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `platform`, `mercado-pago`, `studio-sites`, `studio-scheduling`, `studio-students`, `studio-aranceles, studio-packs (retired)`, `studio-audit`
 - Active changes: `openspec/changes/{name}/` (none as of 2026-09-04) → archive merges into main specs
-- Studio lessons: `docs/studio-ops-lessons.md` (incl. pause + **Calendario**; latest archive `2026-09-04-studio-calendar`)
+- Studio lessons: `docs/studio-ops-lessons.md` (pause, Calendario, alumnos enroll; latest `2026-09-04-studio-students-calendar-enroll`; Alembic head **015**)
 - MP Conciliación lessons: `docs/mp-conciliation-lessons.md`
 - Skill registry: `.atl/skill-registry.md`
 

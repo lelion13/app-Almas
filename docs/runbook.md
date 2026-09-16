@@ -30,17 +30,17 @@
 
 ## Estudio (Studio Ops MVP)
 - Coexiste con cierres SigueFit: no los reemplaza.
-- Migración: `alembic upgrade head` (revisión **`015`**: `bookings.pack_id` nullable + alinea emails de alumnos; **`014`**: emails instructores; **`013`**: instructor activities…).
+- Migración: `alembic upgrade head` (revisión **`016`**: aranceles/abonos + drop packs; **`015`**: emails alumnos…).
 - API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
 - UI:
-  - Admin → **Estudio** (`/studio`): **Calendario** (semana; franjas por horario×duración; asignar/ver instructor); sedes; salones; actividades; instructores; alumnos; feriados; auditoría.
-    - **Pausado** (`STUDIO_SCHEDULE_PAUSED`): Series/Sesiones/Productos/Paquetes tabs ocultas; esas APIs y booking → 410. **Calendario** (`/calendar/availability`, `/calendar/schedule`) **sigue activo** y puede persistir series.
+  - Admin → **Estudio** (`/studio`): **Calendario**; **Aranceles**; sedes; salones; actividades; instructores; alumnos (Abonos); feriados; auditoría.
+    - **Pausado** (`STUDIO_SCHEDULE_PAUSED`): Series/Sesiones ocultas; APIs 410. Carve-out: calendar + aranceles/abonos.
   - Instructor → **Mi agenda** (`/instructor`): stub reconstrucción mientras pause.
   - Alumno → **Mis clases** (`/mis-clases`): stub reconstrucción mientras pause.
-- Packs de N clases (sin mensual libre); alcance `all_sedes` o `one_sede` al asignar.
-- Specs: `openspec/specs/studio-*.md` (+ `auth`, `platform`, `deployment`) — calendario en `studio-scheduling`.
+- Abonos: mes móvil desde pago; series del calendario; turnos asociados a mano; pago parcial.
+- Specs: `openspec/specs/studio-*.md` (+ `studio-aranceles`).
 - Lecciones: `docs/studio-ops-lessons.md`
-- Archives: `…/2026-09-04-studio-schedule-pause/`, `…/2026-09-04-studio-calendar/`
+- Change activo: `openspec/changes/studio-aranceles/`
 
 ## Backups de Base de Datos (S3 / Cloudflare R2)
 - Menú admin **Configuración** (`/configuracion`).

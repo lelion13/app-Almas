@@ -1,34 +1,56 @@
 """Business rules for studio operations.
 
-Every mutating helper commits its own unit of work.  Booking and cancellation
-lock the affected rows before changing credits so concurrent requests cannot
-oversell a class or spend the same credit twice.
+Every mutating helper commits its own unit of work. Booking paths lock session
+rows so concurrent requests cannot oversell capacity.
 """
 
+from calendar import monthrange
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.studio import (
-    Attendance, Booking, ClassSeries, ClassSession, FixedEnrollment, PackProduct,
-    StudentPack, StudioActivity, StudioActivityRoom, StudioAuditLog, StudioHoliday,
-    StudioInstructor, StudioInstructorActivity, StudioRoom, StudioRoomHours, StudioSettings, StudioSite,
-    StudioStudent, WaitlistEntry,
+    Attendance,
+    Booking,
+    ClassSeries,
+    ClassSession,
+    StudioAbono,
+    StudioAbonoPayment,
+    StudioAbonoSeries,
+    StudioActivity,
+    StudioActivityRoom,
+    StudioArancel,
+    StudioArancelActivity,
+    StudioAuditLog,
+    StudioHoliday,
+    StudioInstructor,
+    StudioInstructorActivity,
+    StudioRoom,
+    StudioRoomHours,
+    StudioSettings,
+    StudioSite,
+    StudioStudent,
+    WaitlistEntry,
 )
 from app.models.user import User
 from app.schemas.studio import (
+    AbonoPaymentResponse,
+    AbonoResponse,
     ActivityResponse,
+    ArancelResponse,
     CalendarAvailabilityResponse,
     CalendarDay,
     CalendarEnrolledStudent,
     CalendarHolidayInfo,
     CalendarSlot,
+    EligibleBookingResponse,
     InstructorResponse,
     StudentResponse,
 )
@@ -109,21 +131,19 @@ def assert_series_fits_room_hours(
         _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Class time is outside room open hours")
 
 
-def pack_can_book_at_site(pack: StudentPack, site_id: UUID, today: date | None = None) -> bool:
-    today = today or date.today()
-    return (
-        pack.remaining_credits > 0
-        and pack.starts_on <= today <= pack.expires_on
-        and pack.payment_status == "pagado"
-        and (pack.scope == "all_sedes" or (pack.scope == "one_sede" and pack.site_id == site_id))
-    )
+def add_one_calendar_month(day: date) -> date:
+    """Same day next month; clamp to last day when the target month is shorter."""
+    month = day.month + 1
+    year = day.year
+    if month > 12:
+        month = 1
+        year += 1
+    last = monthrange(year, month)[1]
+    return date(year, month, min(day.day, last))
 
 
-def transferred_credit_balances(source_credits: int, target_credits: int, credits: int) -> tuple[int, int]:
-    """Validate and calculate the two pack balances for a credit transfer."""
-    if credits < 1 or source_credits < credits:
-        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Insufficient credits")
-    return source_credits - credits, target_credits + credits
+def abono_period_contains(starts_on: date, ends_on: date, session_date: date) -> bool:
+    return starts_on <= session_date <= ends_on
 
 
 def get_or_create_settings(db: Session) -> StudioSettings:
@@ -729,7 +749,7 @@ def enroll_student_on_calendar(
 
     if existing is not None:
         existing.status = "booked"
-        existing.pack_id = None
+        existing.abono_id = None
         existing.source = "calendar"
         existing.cancelled_at = None
         booking = existing
@@ -737,7 +757,7 @@ def enroll_student_on_calendar(
         booking = Booking(
             student_id=student_id,
             session_id=session.id,
-            pack_id=None,
+            abono_id=None,
             source="calendar",
             status="booked",
         )
@@ -1296,10 +1316,6 @@ def mass_cancel_session(db: Session, session_id: UUID, actor_user_id: UUID | Non
     session.status = "cancelled"
     bookings = db.scalars(select(Booking).where(Booking.session_id == session.id, Booking.status == "booked").with_for_update()).all()
     for booking in bookings:
-        if booking.pack_id:
-            pack = db.scalar(select(StudentPack).where(StudentPack.id == booking.pack_id).with_for_update())
-            if pack:
-                pack.remaining_credits += 1
         booking.status = "cancelled"
         booking.cancelled_at = datetime.now(timezone.utc)
     write_audit(db, actor_user_id, "mass_cancel", "class_session", session.id, {"returned_bookings": len(bookings)})
@@ -1308,51 +1324,342 @@ def mass_cancel_session(db: Session, session_id: UUID, actor_user_id: UUID | Non
     return session
 
 
-def create_pack_product(db: Session, values: dict[str, Any]) -> PackProduct:
-    return _save(db, PackProduct(**values))
-
-
-def assign_pack(db: Session, values: dict[str, Any], actor_user_id: UUID | None = None) -> StudentPack:
-    student = _get(db, StudioStudent, values["student_id"], "Student")
-    product = _get(db, PackProduct, values["product_id"], "Pack product")
-    if not student.active or not product.active:
-        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Student and pack product must be active")
-    if values["scope"] == "one_sede":
-        _get(db, StudioSite, values["site_id"], "Site")
-    values["expires_on"] = values.get("expires_on") or values["starts_on"] + timedelta(days=product.validity_days)
-    values["remaining_credits"] = product.class_count
-    pack = StudentPack(**values)
-    db.add(pack)
-    write_audit(db, actor_user_id, "assign_pack", "student_pack", pack.id, {"student_id": str(student.id), "credits": product.class_count})
-    return _save(db, pack)
-
-
-def transfer_credits(db: Session, source_pack_id: UUID, target_pack_id: UUID, credits: int, actor_user_id: UUID | None) -> tuple[StudentPack, StudentPack]:
-    if source_pack_id == target_pack_id:
-        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Source and target packs must differ")
-    source = db.scalar(select(StudentPack).where(StudentPack.id == source_pack_id).with_for_update())
-    target = db.scalar(select(StudentPack).where(StudentPack.id == target_pack_id).with_for_update())
-    if source is None or target is None:
-        _error(status.HTTP_404_NOT_FOUND, "Pack not found")
-    source.remaining_credits, target.remaining_credits = transferred_credit_balances(
-        source.remaining_credits, target.remaining_credits, credits
+def _arancel_activity_ids(db: Session, arancel_id: UUID) -> list[UUID]:
+    return list(
+        db.scalars(select(StudioArancelActivity.activity_id).where(StudioArancelActivity.arancel_id == arancel_id)).all()
     )
-    write_audit(db, actor_user_id, "transfer_credits", "student_pack", source.id, {"target_pack_id": str(target.id), "credits": credits})
+
+
+def serialize_arancel(db: Session, arancel: StudioArancel) -> ArancelResponse:
+    return ArancelResponse(
+        id=arancel.id,
+        name=arancel.name,
+        price=arancel.price,
+        classes_per_week=arancel.classes_per_week,
+        activity_ids=_arancel_activity_ids(db, arancel.id),
+        active=arancel.active,
+        created_at=arancel.created_at,
+    )
+
+
+def _set_arancel_activities(db: Session, arancel_id: UUID, activity_ids: list[UUID]) -> None:
+    unique_ids = list(dict.fromkeys(activity_ids))
+    if not unique_ids:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El arancel debe tener al menos una actividad.")
+    for activity_id in unique_ids:
+        activity = _get(db, StudioActivity, activity_id, "Activity")
+        if not activity.active:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Todas las actividades deben estar activas.")
+    db.execute(delete(StudioArancelActivity).where(StudioArancelActivity.arancel_id == arancel_id))
+    for activity_id in unique_ids:
+        db.add(StudioArancelActivity(arancel_id=arancel_id, activity_id=activity_id))
+
+
+def create_arancel(db: Session, values: dict[str, Any]) -> ArancelResponse:
+    activity_ids = values.pop("activity_ids")
+    arancel = StudioArancel(**values)
+    db.add(arancel)
+    db.flush()
+    _set_arancel_activities(db, arancel.id, activity_ids)
     db.commit()
-    db.refresh(source)
-    db.refresh(target)
-    return source, target
+    db.refresh(arancel)
+    return serialize_arancel(db, arancel)
 
 
-def book_session(db: Session, student_id: UUID, session_id: UUID, pack_id: UUID, source: str, actor_user_id: UUID | None = None) -> Booking:
+def update_arancel(db: Session, arancel_id: UUID, values: dict[str, Any]) -> ArancelResponse:
+    arancel = _get(db, StudioArancel, arancel_id, "Arancel")
+    activity_ids = values.pop("activity_ids", None)
+    for key, value in values.items():
+        setattr(arancel, key, value)
+    if activity_ids is not None:
+        _set_arancel_activities(db, arancel.id, activity_ids)
+    db.commit()
+    db.refresh(arancel)
+    return serialize_arancel(db, arancel)
+
+
+def list_aranceles(db: Session) -> list[ArancelResponse]:
+    rows = db.scalars(select(StudioArancel).order_by(StudioArancel.name)).all()
+    return [serialize_arancel(db, row) for row in rows]
+
+
+def _abono_series_ids(db: Session, abono_id: UUID) -> list[UUID]:
+    return list(db.scalars(select(StudioAbonoSeries.series_id).where(StudioAbonoSeries.abono_id == abono_id)).all())
+
+
+def _abono_booking_ids(db: Session, abono_id: UUID) -> list[UUID]:
+    return list(
+        db.scalars(select(Booking.id).where(Booking.abono_id == abono_id, Booking.status == "booked")).all()
+    )
+
+
+def _abono_payments(db: Session, abono_id: UUID) -> list[StudioAbonoPayment]:
+    return list(
+        db.scalars(
+            select(StudioAbonoPayment)
+            .where(StudioAbonoPayment.abono_id == abono_id)
+            .order_by(StudioAbonoPayment.paid_on, StudioAbonoPayment.created_at)
+        ).all()
+    )
+
+
+def _amount_paid(payments: list[StudioAbonoPayment]) -> Decimal:
+    total = sum((p.amount for p in payments), Decimal("0"))
+    return Decimal(total)
+
+
+def serialize_abono(db: Session, abono: StudioAbono) -> AbonoResponse:
+    arancel = _get(db, StudioArancel, abono.arancel_id, "Arancel")
+    payments = _abono_payments(db, abono.id)
+    amount_paid = _amount_paid(payments)
+    amount_due = abono.agreed_amount - amount_paid
+    if amount_due < 0:
+        amount_due = Decimal("0")
+    return AbonoResponse(
+        id=abono.id,
+        student_id=abono.student_id,
+        arancel_id=abono.arancel_id,
+        arancel_name=arancel.name,
+        agreed_amount=abono.agreed_amount,
+        amount_paid=amount_paid,
+        amount_due=amount_due,
+        paid_on=abono.paid_on,
+        starts_on=abono.starts_on,
+        ends_on=abono.ends_on,
+        status=abono.status,
+        notes=abono.notes,
+        series_ids=_abono_series_ids(db, abono.id),
+        booking_ids=_abono_booking_ids(db, abono.id),
+        payments=[AbonoPaymentResponse.model_validate(p) for p in payments],
+        created_at=abono.created_at,
+        annulled_at=abono.annulled_at,
+    )
+
+
+def _assert_no_activity_overlap(db: Session, student_id: UUID, activity_ids: set[UUID], exclude_abono_id: UUID | None = None) -> None:
+    query = select(StudioAbono).where(StudioAbono.student_id == student_id, StudioAbono.status == "active")
+    if exclude_abono_id:
+        query = query.where(StudioAbono.id != exclude_abono_id)
+    for other in db.scalars(query).all():
+        other_activities = set(_arancel_activity_ids(db, other.arancel_id))
+        if activity_ids & other_activities:
+            _error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "El alumno ya tiene un abono vigente que comparte actividades con este arancel.",
+            )
+
+
+def _validate_and_set_series(db: Session, abono: StudioAbono, arancel: StudioArancel, series_ids: list[UUID]) -> None:
+    unique_ids = list(dict.fromkeys(series_ids))
+    if len(unique_ids) > arancel.classes_per_week:
+        _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Podés elegir hasta {arancel.classes_per_week} series (clases por semana del arancel).",
+        )
+    allowed_activities = set(_arancel_activity_ids(db, arancel.id))
+    for series_id in unique_ids:
+        series = _get(db, ClassSeries, series_id, "Series")
+        if not series.active:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Todas las series deben estar activas.")
+        if series.activity_id not in allowed_activities:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Las series deben pertenecer a las actividades del arancel.")
+    db.execute(delete(StudioAbonoSeries).where(StudioAbonoSeries.abono_id == abono.id))
+    for series_id in unique_ids:
+        db.add(StudioAbonoSeries(abono_id=abono.id, series_id=series_id))
+
+
+def _link_bookings(db: Session, abono: StudioAbono, booking_ids: list[UUID]) -> None:
+    series_ids = set(_abono_series_ids(db, abono.id))
+    desired = set(booking_ids)
+
+    current = {
+        b.id: b
+        for b in db.scalars(select(Booking).where(Booking.abono_id == abono.id)).all()
+    }
+    for booking_id, booking in current.items():
+        if booking_id not in desired:
+            booking.abono_id = None
+
+    for booking_id in desired:
+        booking = _get(db, Booking, booking_id, "Booking")
+        if booking.student_id != abono.student_id:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El turno no pertenece a este alumno.")
+        if booking.status != "booked":
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Solo se pueden asociar turnos activos.")
+        if booking.abono_id is not None and booking.abono_id != abono.id:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El turno ya está cubierto por otro abono.")
+        session = _get(db, ClassSession, booking.session_id, "Session")
+        if session.series_id not in series_ids:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El turno no pertenece a las series del abono.")
+        if not abono_period_contains(abono.starts_on, abono.ends_on, session.session_date):
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El turno está fuera del periodo del abono.")
+        booking.abono_id = abono.id
+
+
+def create_abono(db: Session, values: dict[str, Any], actor_user_id: UUID | None = None) -> AbonoResponse:
+    student = _get(db, StudioStudent, values["student_id"], "Student")
+    arancel = _get(db, StudioArancel, values["arancel_id"], "Arancel")
+    if not student.active:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El alumno no está activo.")
+    if not arancel.active:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El arancel no está activo.")
+
+    activity_ids = set(_arancel_activity_ids(db, arancel.id))
+    _assert_no_activity_overlap(db, student.id, activity_ids)
+
+    paid_on: date = values["paid_on"]
+    abono = StudioAbono(
+        student_id=student.id,
+        arancel_id=arancel.id,
+        agreed_amount=arancel.price,
+        paid_on=paid_on,
+        starts_on=paid_on,
+        ends_on=add_one_calendar_month(paid_on),
+        status="active",
+        notes=values.get("notes"),
+    )
+    db.add(abono)
+    db.flush()
+    _validate_and_set_series(db, abono, arancel, values.get("series_ids") or [])
+    db.flush()
+    _link_bookings(db, abono, values.get("booking_ids") or [])
+
+    initial = values.get("initial_payment")
+    if initial:
+        db.add(
+            StudioAbonoPayment(
+                abono_id=abono.id,
+                amount=initial["amount"],
+                paid_on=initial.get("paid_on") or paid_on,
+                method=initial.get("method") or "efectivo",
+                notes=initial.get("notes"),
+                created_by_user_id=actor_user_id,
+            )
+        )
+
+    write_audit(
+        db,
+        actor_user_id,
+        "create_abono",
+        "abono",
+        abono.id,
+        {"student_id": str(student.id), "arancel_id": str(arancel.id)},
+    )
+    db.commit()
+    db.refresh(abono)
+    return serialize_abono(db, abono)
+
+
+def update_abono(db: Session, abono_id: UUID, values: dict[str, Any], actor_user_id: UUID | None = None) -> AbonoResponse:
+    abono = _get(db, StudioAbono, abono_id, "Abono")
+    if abono.status != "active":
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El abono está anulado.")
+    arancel = _get(db, StudioArancel, abono.arancel_id, "Arancel")
+
+    if "notes" in values:
+        abono.notes = values["notes"]
+    if "series_ids" in values and values["series_ids"] is not None:
+        _validate_and_set_series(db, abono, arancel, values["series_ids"])
+        db.flush()
+        # Drop links that no longer match series after series change.
+        series_ids = set(_abono_series_ids(db, abono.id))
+        for booking in db.scalars(select(Booking).where(Booking.abono_id == abono.id)).all():
+            session = _get(db, ClassSession, booking.session_id, "Session")
+            if session.series_id not in series_ids:
+                booking.abono_id = None
+    if "booking_ids" in values and values["booking_ids"] is not None:
+        _link_bookings(db, abono, values["booking_ids"])
+
+    write_audit(db, actor_user_id, "update_abono", "abono", abono.id, None)
+    db.commit()
+    db.refresh(abono)
+    return serialize_abono(db, abono)
+
+
+def add_abono_payment(
+    db: Session, abono_id: UUID, values: dict[str, Any], actor_user_id: UUID | None = None
+) -> AbonoResponse:
+    abono = _get(db, StudioAbono, abono_id, "Abono")
+    if abono.status != "active":
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El abono está anulado.")
+    payment = StudioAbonoPayment(
+        abono_id=abono.id,
+        amount=values["amount"],
+        paid_on=values.get("paid_on") or date.today(),
+        method=values.get("method") or "efectivo",
+        notes=values.get("notes"),
+        created_by_user_id=actor_user_id,
+    )
+    db.add(payment)
+    write_audit(db, actor_user_id, "abono_payment", "abono", abono.id, {"amount": str(values["amount"])})
+    db.commit()
+    db.refresh(abono)
+    return serialize_abono(db, abono)
+
+
+def annul_abono(db: Session, abono_id: UUID, actor_user_id: UUID | None = None) -> AbonoResponse:
+    abono = _get(db, StudioAbono, abono_id, "Abono")
+    if abono.status == "annulled":
+        return serialize_abono(db, abono)
+    for booking in db.scalars(select(Booking).where(Booking.abono_id == abono.id)).all():
+        booking.abono_id = None
+    abono.status = "annulled"
+    abono.annulled_at = datetime.now(timezone.utc)
+    abono.annulled_by_user_id = actor_user_id
+    write_audit(db, actor_user_id, "annul_abono", "abono", abono.id, None)
+    db.commit()
+    db.refresh(abono)
+    return serialize_abono(db, abono)
+
+
+def list_abonos(db: Session, student_id: UUID | None = None) -> list[AbonoResponse]:
+    query = select(StudioAbono).order_by(StudioAbono.created_at.desc())
+    if student_id:
+        query = query.where(StudioAbono.student_id == student_id)
+    return [serialize_abono(db, row) for row in db.scalars(query).all()]
+
+
+def list_eligible_bookings(db: Session, abono_id: UUID) -> list[EligibleBookingResponse]:
+    abono = _get(db, StudioAbono, abono_id, "Abono")
+    series_ids = _abono_series_ids(db, abono.id)
+    if not series_ids:
+        return []
+    rows = db.execute(
+        select(Booking, ClassSession)
+        .join(ClassSession, ClassSession.id == Booking.session_id)
+        .where(
+            Booking.student_id == abono.student_id,
+            Booking.status == "booked",
+            ClassSession.series_id.in_(series_ids),
+            ClassSession.session_date >= abono.starts_on,
+            ClassSession.session_date <= abono.ends_on,
+            or_(Booking.abono_id.is_(None), Booking.abono_id == abono.id),
+        )
+        .order_by(ClassSession.session_date, ClassSession.start_time)
+    ).all()
+    result: list[EligibleBookingResponse] = []
+    for booking, session in rows:
+        result.append(
+            EligibleBookingResponse(
+                booking_id=booking.id,
+                session_id=session.id,
+                series_id=session.series_id,
+                session_date=session.session_date,
+                start_time=session.start_time,
+                activity_id=session.activity_id,
+                covered=booking.abono_id == abono.id,
+            )
+        )
+    return result
+
+
+def book_session(db: Session, student_id: UUID, session_id: UUID, source: str, actor_user_id: UUID | None = None) -> Booking:
+    """Book without requiring an abono (coverage is linked later)."""
     session = db.scalar(select(ClassSession).where(ClassSession.id == session_id).with_for_update())
-    pack = db.scalar(select(StudentPack).where(StudentPack.id == pack_id).with_for_update())
-    if session is None or pack is None:
-        _error(status.HTTP_404_NOT_FOUND, "Session or pack not found")
+    if session is None:
+        _error(status.HTTP_404_NOT_FOUND, "Session not found")
     if session.status != "scheduled":
         _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Session is not available")
-    if pack.student_id != student_id or not pack_can_book_at_site(pack, session.site_id):
-        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Pack cannot be used for this session")
     existing = db.scalar(select(Booking).where(Booking.student_id == student_id, Booking.session_id == session_id))
     if existing and existing.status == "booked":
         _error(status.HTTP_409_CONFLICT, "Student already has a booking")
@@ -1360,12 +1667,11 @@ def book_session(db: Session, student_id: UUID, session_id: UUID, pack_id: UUID,
     if booked_count >= session.capacity:
         _error(status.HTTP_409_CONFLICT, "Session is full")
     if existing:
-        existing.status, existing.pack_id, existing.source, existing.cancelled_at = "booked", pack_id, source, None
+        existing.status, existing.abono_id, existing.source, existing.cancelled_at = "booked", None, source, None
         booking = existing
     else:
-        booking = Booking(student_id=student_id, session_id=session_id, pack_id=pack_id, source=source)
+        booking = Booking(student_id=student_id, session_id=session_id, abono_id=None, source=source)
         db.add(booking)
-    pack.remaining_credits -= 1
     write_audit(db, actor_user_id, "book", "booking", booking.id, {"session_id": str(session.id), "source": source})
     return _save(db, booking)
 
@@ -1376,12 +1682,9 @@ def cancel_booking(db: Session, booking_id: UUID, actor_user_id: UUID | None = N
         _error(status.HTTP_404_NOT_FOUND, "Booking not found")
     if booking.status == "cancelled":
         return booking
-    if booking.pack_id:
-        pack = db.scalar(select(StudentPack).where(StudentPack.id == booking.pack_id).with_for_update())
-        if pack:
-            pack.remaining_credits += 1
     booking.status = "cancelled"
     booking.cancelled_at = datetime.now(timezone.utc)
+    booking.abono_id = None
     write_audit(db, actor_user_id, "cancel_booking", "booking", booking.id, None)
     return _save(db, booking)
 
@@ -1395,9 +1698,9 @@ def waitlist_join(db: Session, student_id: UUID, session_id: UUID) -> WaitlistEn
     return _save(db, WaitlistEntry(student_id=student_id, session_id=session_id, position=position))
 
 
-def waitlist_confirm(db: Session, waitlist_id: UUID, pack_id: UUID, actor_user_id: UUID | None = None) -> Booking:
+def waitlist_confirm(db: Session, waitlist_id: UUID, actor_user_id: UUID | None = None) -> Booking:
     entry = _get(db, WaitlistEntry, waitlist_id, "Waitlist entry")
-    booking = book_session(db, entry.student_id, entry.session_id, pack_id, "waitlist", actor_user_id)
+    booking = book_session(db, entry.student_id, entry.session_id, "waitlist", actor_user_id)
     db.delete(entry)
     db.commit()
     return booking
@@ -1414,29 +1717,8 @@ def set_attendance(db: Session, booking_id: UUID, attendance_status: str, noted_
     else:
         attendance = Attendance(booking_id=booking.id, status=attendance_status, noted_by_user_id=noted_by_user_id)
         db.add(attendance)
-    # Booking consumes a credit and cancellation returns it.  Therefore an
-    # absence intentionally retains the consumed credit; it never deducts twice.
     write_audit(db, noted_by_user_id, "attendance", "booking", booking.id, {"status": attendance_status})
     return _save(db, attendance)
-
-
-def create_fixed_enrollment(db: Session, student_id: UUID, series_id: UUID, pack_id: UUID, actor_user_id: UUID | None = None) -> FixedEnrollment:
-    _get(db, StudioStudent, student_id, "Student")
-    _get(db, ClassSeries, series_id, "Series")
-    _get(db, StudentPack, pack_id, "Pack")
-    existing = db.scalar(select(FixedEnrollment).where(FixedEnrollment.student_id == student_id, FixedEnrollment.series_id == series_id))
-    if existing:
-        _error(status.HTTP_409_CONFLICT, "Fixed enrollment already exists")
-    enrollment = FixedEnrollment(student_id=student_id, series_id=series_id, pack_id=pack_id)
-    db.add(enrollment)
-    db.flush()
-    for session in db.scalars(select(ClassSession).where(ClassSession.series_id == series_id, ClassSession.status == "scheduled", ClassSession.session_date >= date.today())).all():
-        try:
-            book_session(db, student_id, session.id, pack_id, "fixed", actor_user_id)
-        except HTTPException as exc:
-            if exc.status_code != status.HTTP_409_CONFLICT:
-                raise
-    return _save(db, enrollment)
 
 
 def get_instructor_by_user(db: Session, user_id: UUID) -> StudioInstructor:

@@ -9,21 +9,21 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import AdminOnly, AdminOrInstructor, AlumnoOnly, InstructorOnly, get_db, require_schedule_active
 from app.models.studio import (
-    Booking, ClassSeries, PackProduct, StudentPack, StudioActivity, StudioAuditLog,
+    Booking, ClassSeries, StudioAbono, StudioActivity, StudioArancel, StudioAuditLog,
     StudioHoliday, StudioInstructor, StudioRoom, StudioSite, StudioStudent, WaitlistEntry,
 )
 from app.schemas.studio import (
-    ActivityCreate, ActivityPatch, ActivityResponse, AttendanceResponse, AttendanceSet,
+    AbonoCreate, AbonoPatch, AbonoPaymentCreate, AbonoResponse,
+    ActivityCreate, ActivityPatch, ActivityResponse, ArancelCreate, ArancelPatch, ArancelResponse,
+    AttendanceResponse, AttendanceSet,
     AuditResponse, BookingCreate, BookingResponse, CalendarAvailabilityResponse,
-    CalendarEnrollCreate, CalendarScheduleCreate,
-    FixedEnrollmentCreate,
-    FixedEnrollmentResponse, HolidayCreate, HolidayResponse, InstructorCreate,
-    InstructorPatch, InstructorResponse, PackAssign, PackProductCreate, PackProductPatch,
-    PackProductResponse, ProfilePatch, RoomCreate, RoomHoursReplace, RoomHoursResponse,
+    CalendarEnrollCreate, CalendarScheduleCreate, EligibleBookingResponse,
+    HolidayCreate, HolidayResponse, InstructorCreate,
+    InstructorPatch, InstructorResponse, ProfilePatch, RoomCreate, RoomHoursReplace, RoomHoursResponse,
     RoomPatch, RoomResponse, SeriesCreate,
     SeriesPatch, SeriesResponse, SessionResponse, SettingsPatch, SettingsResponse,
-    SiteCreate, SitePatch, SiteResponse, StudentCreate, StudentPackResponse,
-    StudentPatch, StudentResponse, TransferCredits, TransferCreditsResponse,
+    SiteCreate, SitePatch, SiteResponse, StudentCreate,
+    StudentPatch, StudentResponse,
     WaitlistConfirm, WaitlistJoin, WaitlistResponse,
 )
 from app.services import studio_service as service
@@ -255,51 +255,72 @@ def delete_holiday(holiday_id: UUID, _admin: AdminOnly, db: Session = Depends(ge
     db.commit()
 
 
-# Admin: packs and enrollment
-@router.get("/pack-products", response_model=list[PackProductResponse], dependencies=_paused)
-def list_pack_products(_admin: AdminOnly, db: Session = Depends(get_db)):
-    return _list(db, PackProduct)
+# Admin: aranceles (catalog) and abonos (not gated by schedule pause)
+@router.get("/aranceles", response_model=list[ArancelResponse])
+def list_aranceles(_user: AdminOrInstructor, db: Session = Depends(get_db)):
+    return service.list_aranceles(db)
 
 
-@router.post("/pack-products", response_model=PackProductResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
-def create_pack_product(body: PackProductCreate, _admin: AdminOnly, db: Session = Depends(get_db)):
-    return service.create_pack_product(db, body.model_dump())
+@router.post("/aranceles", response_model=ArancelResponse, status_code=status.HTTP_201_CREATED)
+def create_arancel(body: ArancelCreate, _admin: AdminOnly, db: Session = Depends(get_db)):
+    return service.create_arancel(db, body.model_dump())
 
 
-@router.patch("/pack-products/{product_id}", response_model=PackProductResponse, dependencies=_paused)
-def patch_pack_product(product_id: UUID, body: PackProductPatch, _admin: AdminOnly, db: Session = Depends(get_db)):
-    return service.update_entity(db, service._get(db, PackProduct, product_id, "Pack product"), body.model_dump(exclude_unset=True))
+@router.patch("/aranceles/{arancel_id}", response_model=ArancelResponse)
+def patch_arancel(arancel_id: UUID, body: ArancelPatch, _admin: AdminOnly, db: Session = Depends(get_db)):
+    return service.update_arancel(db, arancel_id, body.model_dump(exclude_unset=True))
 
 
-@router.delete("/pack-products/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=_paused)
-def delete_pack_product(product_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db)):
-    service.deactivate_entity(db, service._get(db, PackProduct, product_id, "Pack product"))
+@router.delete("/aranceles/{arancel_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_arancel(arancel_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db)):
+    service.deactivate_entity(db, service._get(db, StudioArancel, arancel_id, "Arancel"))
 
 
-@router.get("/student-packs", response_model=list[StudentPackResponse], dependencies=_paused)
-def list_student_packs(_admin: AdminOnly, db: Session = Depends(get_db), student_id: UUID | None = None):
-    query = select(StudentPack)
-    if student_id:
-        query = query.where(StudentPack.student_id == student_id)
-    return db.scalars(query).all()
+@router.get("/abonos", response_model=list[AbonoResponse])
+def list_abonos(_user: AdminOrInstructor, db: Session = Depends(get_db), student_id: UUID | None = None):
+    return service.list_abonos(db, student_id=student_id)
 
 
-@router.post("/student-packs", response_model=StudentPackResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
-def assign_pack(body: PackAssign, admin: AdminOnly, db: Session = Depends(get_db)):
-    return service.assign_pack(db, body.model_dump(), admin.id)
+@router.post("/abonos", response_model=AbonoResponse, status_code=status.HTTP_201_CREATED)
+def create_abono(body: AbonoCreate, user: AdminOrInstructor, db: Session = Depends(get_db)):
+    payload = body.model_dump()
+    if body.initial_payment is not None:
+        payload["initial_payment"] = body.initial_payment.model_dump()
+    return service.create_abono(db, payload, user.id)
 
 
-@router.post("/transfer-credits", response_model=TransferCreditsResponse, dependencies=_paused)
-def transfer_credits(body: TransferCredits, admin: AdminOnly, db: Session = Depends(get_db)):
-    source_pack, target_pack = service.transfer_credits(
-        db, body.source_pack_id, body.target_pack_id, body.credits, admin.id
-    )
-    return TransferCreditsResponse(source_pack=source_pack, target_pack=target_pack)
+@router.get("/abonos/{abono_id}", response_model=AbonoResponse)
+def get_abono(abono_id: UUID, _user: AdminOrInstructor, db: Session = Depends(get_db)):
+    return service.serialize_abono(db, service._get(db, StudioAbono, abono_id, "Abono"))
 
 
-@router.post("/fixed-enrollments", response_model=FixedEnrollmentResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
-def create_fixed_enrollment(body: FixedEnrollmentCreate, admin: AdminOnly, db: Session = Depends(get_db)):
-    return service.create_fixed_enrollment(db, body.student_id, body.series_id, body.pack_id, admin.id)
+@router.patch("/abonos/{abono_id}", response_model=AbonoResponse)
+def patch_abono(abono_id: UUID, body: AbonoPatch, user: AdminOrInstructor, db: Session = Depends(get_db)):
+    return service.update_abono(db, abono_id, body.model_dump(exclude_unset=True), user.id)
+
+
+@router.post("/abonos/{abono_id}/payments", response_model=AbonoResponse)
+def add_abono_payment(abono_id: UUID, body: AbonoPaymentCreate, user: AdminOrInstructor, db: Session = Depends(get_db)):
+    return service.add_abono_payment(db, abono_id, body.model_dump(), user.id)
+
+
+@router.post("/abonos/{abono_id}/annul", response_model=AbonoResponse)
+def annul_abono(abono_id: UUID, user: AdminOrInstructor, db: Session = Depends(get_db)):
+    return service.annul_abono(db, abono_id, user.id)
+
+
+@router.get("/abonos/{abono_id}/eligible-bookings", response_model=list[EligibleBookingResponse])
+def eligible_bookings(abono_id: UUID, _user: AdminOrInstructor, db: Session = Depends(get_db)):
+    return service.list_eligible_bookings(db, abono_id)
+
+
+@router.get("/series-options", response_model=list[SeriesResponse])
+def list_series_options(_user: AdminOrInstructor, db: Session = Depends(get_db), activity_id: UUID | None = None):
+    """Active series for abono assignment (not gated by pause)."""
+    query = select(ClassSeries).where(ClassSeries.active.is_(True))
+    if activity_id:
+        query = query.where(ClassSeries.activity_id == activity_id)
+    return db.scalars(query.order_by(ClassSeries.weekday, ClassSeries.start_time)).all()
 
 
 @router.post("/bookings/{booking_id}/cancel", response_model=BookingResponse, dependencies=_paused)
@@ -317,7 +338,7 @@ def list_waitlist(_admin: AdminOnly, db: Session = Depends(get_db), session_id: 
 
 @router.post("/waitlist/{waitlist_id}/confirm", response_model=BookingResponse, dependencies=_paused)
 def admin_confirm_waitlist(waitlist_id: UUID, body: WaitlistConfirm, admin: AdminOnly, db: Session = Depends(get_db)):
-    return service.waitlist_confirm(db, waitlist_id, body.pack_id, admin.id)
+    return service.waitlist_confirm(db, waitlist_id, admin.id)
 
 
 @router.post("/attendance", response_model=AttendanceResponse, dependencies=_paused)
@@ -367,12 +388,6 @@ def instructor_attendance(body: AttendanceSet, instructor_user: InstructorOnly, 
 
 
 # Alumno portal
-@router.get("/me/packs", response_model=list[StudentPackResponse], dependencies=_paused)
-def my_packs(alumno: AlumnoOnly, db: Session = Depends(get_db)):
-    student = service.get_student_by_user(db, alumno.id)
-    return db.scalars(select(StudentPack).where(StudentPack.student_id == student.id)).all()
-
-
 @router.get("/me/sessions", response_model=list[SessionResponse], dependencies=_paused)
 def my_available_sessions(alumno: AlumnoOnly, db: Session = Depends(get_db), site_id: UUID | None = None):
     service.get_student_by_user(db, alumno.id)
@@ -382,7 +397,7 @@ def my_available_sessions(alumno: AlumnoOnly, db: Session = Depends(get_db), sit
 @router.post("/me/book", response_model=BookingResponse, status_code=status.HTTP_201_CREATED, dependencies=_paused)
 def my_book(body: BookingCreate, alumno: AlumnoOnly, db: Session = Depends(get_db)):
     student = service.get_student_by_user(db, alumno.id)
-    return service.book_session(db, student.id, body.session_id, body.pack_id, "mobile", alumno.id)
+    return service.book_session(db, student.id, body.session_id, "mobile", alumno.id)
 
 
 @router.post("/me/bookings/{booking_id}/cancel", response_model=BookingResponse, dependencies=_paused)
@@ -406,7 +421,7 @@ def my_confirm_waitlist(waitlist_id: UUID, body: WaitlistConfirm, alumno: Alumno
     entry = service._get(db, WaitlistEntry, waitlist_id, "Waitlist entry")
     if entry.student_id != student.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot confirm another student's waitlist entry")
-    return service.waitlist_confirm(db, waitlist_id, body.pack_id, alumno.id)
+    return service.waitlist_confirm(db, waitlist_id, alumno.id)
 
 
 @router.get("/me/bookings", response_model=list[BookingResponse], dependencies=_paused)

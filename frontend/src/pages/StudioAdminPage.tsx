@@ -3,13 +3,15 @@ import { Navigate } from "react-router-dom";
 import { ApiError, apiFetch } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
 import StudioCalendarPanel from "@/components/StudioCalendarPanel";
+import StudioArancelesPanel from "@/components/StudioArancelesPanel";
+import StudioStudentAbonosModal from "@/components/StudioStudentAbonosModal";
 
 type Item = Record<string, unknown> & { id: string };
 /** Local draft slot; `key` is client-only until saved. */
 type HourSlot = { key: string; weekday: number; open_time: string; close_time: string };
 type Tab =
   | "calendar" | "sites" | "rooms" | "activities" | "instructors" | "students"
-  | "holidays" | "audit";
+  | "aranceles" | "holidays" | "audit";
 
 const WEEKDAY_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -35,7 +37,7 @@ function newSlotKey() {
 const TABS: Array<[Tab, string]> = [
   ["calendar", "Calendario"],
   ["sites", "Sedes"], ["rooms", "Salones"], ["activities", "Actividades"],
-  ["instructors", "Instructores"], ["students", "Alumnos"],
+  ["instructors", "Instructores"], ["students", "Alumnos"], ["aranceles", "Aranceles"],
   ["holidays", "Feriados"], ["audit", "Auditoría"],
 ];
 
@@ -95,6 +97,7 @@ export default function StudioAdminPage() {
   });
   const [editInstructorPasswordTouched, setEditInstructorPasswordTouched] = useState(false);
   const [editStudent, setEditStudent] = useState<Item | null>(null);
+  const [abonosStudent, setAbonosStudent] = useState<Item | null>(null);
   const [editStudentDraft, setEditStudentDraft] = useState({
     full_name: "", email: "", phone: "", document_id: "", emergency_contact: "", emergency_phone: "",
     medical_notes: "", active: true, password: "",
@@ -1347,6 +1350,7 @@ export default function StudioAdminPage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2">
+                  <button type="button" className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700" onClick={() => setAbonosStudent(student)}>Abonos</button>
                   <button type="button" className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700" onClick={() => openEditStudent(student)}>Editar</button>
                   {student.active !== false && (
                     <button type="button" className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => void softDeleteStudent(student)}>Eliminar</button>
@@ -1413,7 +1417,12 @@ export default function StudioAdminPage() {
             </div>
           </div>
         )}
+        {abonosStudent && (
+          <StudioStudentAbonosModal student={abonosStudent} onClose={() => setAbonosStudent(null)} />
+        )}
       </section>}
+
+      {tab === "aranceles" && <StudioArancelesPanel activities={list("activities")} />}
 
       {tab === "holidays" && <section className="space-y-4">
         {form((e) => { e.preventDefault(); void submit("/api/v1/studio/holidays", { holiday_date: value("holidayDate"), name: value("holidayName"), site_id: id("holidaySite") || null }, "Feriado creado."); }, <><Field label="Fecha" type="date" value={value("holidayDate")} onChange={(e) => setValue("holidayDate", e.target.value)} required /><Field label="Nombre" value={value("holidayName")} onChange={(e) => setValue("holidayName", e.target.value)} required /><Select label="Sede (opcional)" field="holidaySite" items={selects.site} required={false} /></>)}

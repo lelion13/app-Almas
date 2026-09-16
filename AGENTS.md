@@ -11,7 +11,7 @@
 ## Spec-Driven Development (source of truth)
 - OpenSpec root: `openspec/`
 - Main specs: `openspec/specs/{domain}/spec.md`
-- Domains: `platform`, `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `mercado-pago`, `studio-sites`, `studio-scheduling`, `studio-students`, `studio-packs`, `studio-audit`
+- Domains: `platform`, `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `mercado-pago`, `studio-sites`, `studio-scheduling`, `studio-students`, `studio-aranceles`, `studio-packs` (retired), `studio-audit`
 - New behavior: propose/spec/design/tasks under `openspec/changes/{change-name}/`, then archive into `openspec/changes/archive/YYYY-MM-DD-{change-name}/` and merge deltas into main specs
 - Excel/cierres detail supplement: `docs/monthly-closings-spec.md`
 - Deploy runbook: `docs/vps-deploy.md`

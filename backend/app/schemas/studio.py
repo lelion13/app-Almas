@@ -318,91 +318,105 @@ class HolidayResponse(ORMModel):
     created_at: datetime
 
 
-class PackProductCreate(BaseModel):
+class ArancelCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    class_count: int = Field(ge=1)
-    validity_days: int = Field(default=30, ge=1)
-    price: Decimal | None = Field(default=None, ge=0)
-    is_trial: bool = False
+    price: Decimal = Field(ge=0)
+    classes_per_week: int = Field(ge=1)
+    activity_ids: list[UUID] = Field(min_length=1)
     active: bool = True
 
 
-class PackProductPatch(BaseModel):
+class ArancelPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    class_count: int | None = Field(default=None, ge=1)
-    validity_days: int | None = Field(default=None, ge=1)
     price: Decimal | None = Field(default=None, ge=0)
-    is_trial: bool | None = None
+    classes_per_week: int | None = Field(default=None, ge=1)
+    activity_ids: list[UUID] | None = Field(default=None, min_length=1)
     active: bool | None = None
 
 
-class PackProductResponse(ORMModel):
+class ArancelResponse(ORMModel):
     id: UUID
     name: str
-    class_count: int
-    validity_days: int
-    price: Decimal | None
-    is_trial: bool
+    price: Decimal
+    classes_per_week: int
+    activity_ids: list[UUID]
     active: bool
     created_at: datetime
 
 
-class PackAssign(BaseModel):
-    student_id: UUID
-    product_id: UUID
-    starts_on: date = Field(default_factory=date.today)
-    expires_on: date | None = None
-    scope: str = Field(default="all_sedes", pattern="^(all_sedes|one_sede)$")
-    site_id: UUID | None = None
-    payment_method: str = Field(default="efectivo", max_length=32)
-    payment_status: str = Field(default="pagado", max_length=32)
+class AbonoPaymentCreate(BaseModel):
+    amount: Decimal = Field(gt=0)
+    paid_on: date = Field(default_factory=date.today)
+    method: str = Field(default="efectivo", max_length=32)
     notes: str | None = None
 
-    @model_validator(mode="after")
-    def validate_scope(self):
-        if self.scope == "one_sede" and self.site_id is None:
-            raise ValueError("site_id is required for one_sede packs")
-        if self.scope == "all_sedes" and self.site_id is not None:
-            raise ValueError("site_id is only valid for one_sede packs")
-        return self
 
-
-class StudentPackResponse(ORMModel):
+class AbonoPaymentResponse(ORMModel):
     id: UUID
-    student_id: UUID
-    product_id: UUID
-    remaining_credits: int
-    starts_on: date
-    expires_on: date
-    scope: str
-    site_id: UUID | None
-    payment_method: str
-    payment_status: str
+    abono_id: UUID
+    amount: Decimal
+    paid_on: date
+    method: str
     notes: str | None
+    created_by_user_id: UUID | None
     created_at: datetime
 
 
-class TransferCredits(BaseModel):
-    source_pack_id: UUID
-    target_pack_id: UUID
-    credits: int = Field(ge=1)
+class AbonoCreate(BaseModel):
+    student_id: UUID
+    arancel_id: UUID
+    paid_on: date = Field(default_factory=date.today)
+    series_ids: list[UUID] = Field(default_factory=list)
+    booking_ids: list[UUID] = Field(default_factory=list)
+    initial_payment: AbonoPaymentCreate | None = None
+    notes: str | None = None
 
 
-class TransferCreditsResponse(BaseModel):
-    source_pack: StudentPackResponse
-    target_pack: StudentPackResponse
+class AbonoPatch(BaseModel):
+    series_ids: list[UUID] | None = None
+    booking_ids: list[UUID] | None = None
+    notes: str | None = None
+
+
+class AbonoResponse(ORMModel):
+    id: UUID
+    student_id: UUID
+    arancel_id: UUID
+    arancel_name: str
+    agreed_amount: Decimal
+    amount_paid: Decimal
+    amount_due: Decimal
+    paid_on: date
+    starts_on: date
+    ends_on: date
+    status: str
+    notes: str | None
+    series_ids: list[UUID]
+    booking_ids: list[UUID]
+    payments: list[AbonoPaymentResponse]
+    created_at: datetime
+    annulled_at: datetime | None = None
+
+
+class EligibleBookingResponse(BaseModel):
+    booking_id: UUID
+    session_id: UUID
+    series_id: UUID
+    session_date: date
+    start_time: time
+    activity_id: UUID
+    covered: bool
 
 
 class BookingCreate(BaseModel):
     session_id: UUID
-    pack_id: UUID
 
 
 class BookingResponse(ORMModel):
     id: UUID
     student_id: UUID
     session_id: UUID
-    pack_id: UUID | None
+    abono_id: UUID | None
     source: str
     status: str
     created_at: datetime
@@ -422,7 +436,7 @@ class WaitlistResponse(ORMModel):
 
 
 class WaitlistConfirm(BaseModel):
-    pack_id: UUID
+    pass
 
 
 class AttendanceSet(BaseModel):
@@ -437,21 +451,6 @@ class AttendanceResponse(ORMModel):
     noted_by_user_id: UUID | None
     created_at: datetime
     updated_at: datetime
-
-
-class FixedEnrollmentCreate(BaseModel):
-    student_id: UUID
-    series_id: UUID
-    pack_id: UUID
-
-
-class FixedEnrollmentResponse(ORMModel):
-    id: UUID
-    student_id: UUID
-    series_id: UUID
-    pack_id: UUID
-    active: bool
-    created_at: datetime
 
 
 class SettingsPatch(BaseModel):
