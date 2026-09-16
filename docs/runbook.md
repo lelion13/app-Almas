@@ -30,17 +30,17 @@
 
 ## Estudio (Studio Ops MVP)
 - Coexiste con cierres SigueFit: no los reemplaza.
-- Migración: `alembic upgrade head` (revisión **`016`**: aranceles/abonos + drop packs; **`015`**: emails alumnos…).
+- Migración: `alembic upgrade head` (revisión **`017`**: semana modelo; **`016`**: aranceles/abonos + drop packs).
 - API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
 - UI:
-  - Admin → **Estudio** (`/studio`): **Calendario**; **Aranceles**; sedes; salones; actividades; instructores; alumnos (Abonos); feriados; auditoría.
-    - **Pausado** (`STUDIO_SCHEDULE_PAUSED`): Series/Sesiones ocultas; APIs 410. Carve-out: calendar + aranceles/abonos.
-  - Instructor → **Mi agenda** (`/instructor`): stub reconstrucción mientras pause.
+  - Admin → **Estudio** (`/studio`): **Calendario**; **Semana modelo**; **Aranceles**; sedes; salones; actividades; instructores; alumnos (Abonos); feriados; auditoría.
+    - **Pausado** (`STUDIO_SCHEDULE_PAUSED`): Series/Sesiones ocultas; APIs 410. Carve-out: calendar + aranceles/abonos + model-week.
+  - Instructor → **Estudio** (Semana modelo, Alumnos/Abonos, Aranceles lectura) + **Mi agenda** (`/instructor`).
   - Alumno → **Mis clases** (`/mis-clases`): stub reconstrucción mientras pause.
-- Abonos: mes móvil desde pago; series del calendario; turnos asociados a mano; pago parcial.
+- Abonos: mes móvil desde pago; horarios desde **semana modelo**; turnos del periodo; pago parcial.
 - Specs: `openspec/specs/studio-*.md` (+ `studio-aranceles`).
 - Lecciones: `docs/studio-ops-lessons.md`
-- Change activo: `openspec/changes/studio-aranceles/`
+- Archive: `openspec/changes/archive/2026-09-16-studio-aranceles/`
 
 ## Backups de Base de Datos (S3 / Cloudflare R2)
 - Menú admin **Configuración** (`/configuracion`).

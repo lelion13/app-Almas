@@ -45,6 +45,7 @@ export default function AppShell() {
             )}
             {isAdmin && <NavLink to="/studio" className={linkCls} onClick={() => setOpen(false)}>Estudio</NavLink>}
             {isAdmin && <NavLink to="/configuracion" className={linkCls} onClick={() => setOpen(false)}>Configuración</NavLink>}
+            {isInstructor && <NavLink to="/studio" className={linkCls} onClick={() => setOpen(false)}>Estudio</NavLink>}
             {isInstructor && <NavLink to="/instructor" className={linkCls} onClick={() => setOpen(false)}>Mi agenda</NavLink>}
             {isAlumno && <NavLink to="/mis-clases" className={linkCls} onClick={() => setOpen(false)}>Mis clases</NavLink>}
             <button
@@ -71,6 +72,7 @@ export default function AppShell() {
           {isAdmin && <NavLink to="/conciliacion" className={linkCls}>Conciliación</NavLink>}
           {isAdmin && <NavLink to="/studio" className={linkCls}>Estudio</NavLink>}
           {isAdmin && <NavLink to="/configuracion" className={linkCls}>Configuración</NavLink>}
+          {isInstructor && <NavLink to="/studio" className={linkCls}>Estudio</NavLink>}
           {isInstructor && <NavLink to="/instructor" className={linkCls}>Mi agenda</NavLink>}
           {isAlumno && <NavLink to="/mis-clases" className={linkCls}>Mis clases</NavLink>}
         </nav>

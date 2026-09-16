@@ -19,11 +19,12 @@ from app.schemas.studio import (
     AuditResponse, BookingCreate, BookingResponse, CalendarAvailabilityResponse,
     CalendarEnrollCreate, CalendarScheduleCreate, EligibleBookingResponse,
     HolidayCreate, HolidayResponse, InstructorCreate,
-    InstructorPatch, InstructorResponse, ProfilePatch, RoomCreate, RoomHoursReplace, RoomHoursResponse,
+    InstructorPatch, InstructorResponse, ModelWeekResponse, ModelWeekSlotPut,
+    ProfilePatch, RoomCreate, RoomHoursReplace, RoomHoursResponse,
     RoomPatch, RoomResponse, SeriesCreate,
     SeriesPatch, SeriesResponse, SessionResponse, SettingsPatch, SettingsResponse,
     SiteCreate, SitePatch, SiteResponse, StudentCreate,
-    StudentPatch, StudentResponse,
+    StudentModelSlotResponse, StudentPatch, StudentResponse,
     WaitlistConfirm, WaitlistJoin, WaitlistResponse,
 )
 from app.services import studio_service as service
@@ -41,7 +42,7 @@ def _list(db: Session, model, active_only: bool = False):
 
 # Admin: locations and catalog
 @router.get("/sites", response_model=list[SiteResponse])
-def list_sites(_admin: AdminOnly, db: Session = Depends(get_db)):
+def list_sites(_user: AdminOrInstructor, db: Session = Depends(get_db)):
     return _list(db, StudioSite)
 
 
@@ -61,7 +62,7 @@ def delete_site(site_id: UUID, _admin: AdminOnly, db: Session = Depends(get_db))
 
 
 @router.get("/rooms", response_model=list[RoomResponse])
-def list_rooms(_admin: AdminOnly, db: Session = Depends(get_db), site_id: UUID | None = None):
+def list_rooms(_user: AdminOrInstructor, db: Session = Depends(get_db), site_id: UUID | None = None):
     query = select(StudioRoom)
     if site_id:
         query = query.where(StudioRoom.site_id == site_id)
@@ -133,7 +134,7 @@ def calendar_enroll(body: CalendarEnrollCreate, admin: AdminOnly, db: Session = 
 
 
 @router.get("/activities", response_model=list[ActivityResponse])
-def list_activities(_admin: AdminOnly, db: Session = Depends(get_db)):
+def list_activities(_user: AdminOrInstructor, db: Session = Depends(get_db)):
     return service.list_activity_responses(db)
 
 
@@ -153,7 +154,7 @@ def delete_activity(activity_id: UUID, _admin: AdminOnly, db: Session = Depends(
 
 
 @router.get("/instructors", response_model=list[InstructorResponse])
-def list_instructors(_admin: AdminOnly, db: Session = Depends(get_db)):
+def list_instructors(_user: AdminOrInstructor, db: Session = Depends(get_db)):
     return service.list_instructor_responses(db)
 
 
@@ -175,7 +176,7 @@ def delete_instructor(instructor_id: UUID, _admin: AdminOnly, db: Session = Depe
 
 
 @router.get("/students", response_model=list[StudentResponse])
-def list_students(_admin: AdminOnly, db: Session = Depends(get_db)):
+def list_students(_user: AdminOrInstructor, db: Session = Depends(get_db)):
     return service.list_student_responses(db)
 
 
@@ -253,6 +254,32 @@ def delete_holiday(holiday_id: UUID, _admin: AdminOnly, db: Session = Depends(ge
     holiday = service._get(db, StudioHoliday, holiday_id, "Holiday")
     db.delete(holiday)
     db.commit()
+
+
+# Semana modelo (not gated by schedule pause)
+@router.get("/model-week", response_model=ModelWeekResponse)
+def get_model_week(
+    room_id: UUID,
+    activity_id: UUID,
+    _user: AdminOrInstructor,
+    db: Session = Depends(get_db),
+):
+    return service.build_model_week(db, room_id, activity_id)
+
+
+@router.put("/model-week/slot", response_model=ModelWeekResponse)
+def put_model_week_slot(body: ModelWeekSlotPut, user: AdminOrInstructor, db: Session = Depends(get_db)):
+    return service.put_model_week_slot(db, body.model_dump(), user.id)
+
+
+@router.get("/students/{student_id}/model-week-slots", response_model=list[StudentModelSlotResponse])
+def list_student_model_week_slots(
+    student_id: UUID,
+    arancel_id: UUID,
+    _user: AdminOrInstructor,
+    db: Session = Depends(get_db),
+):
+    return service.list_student_model_slots_for_arancel(db, student_id, arancel_id)
 
 
 # Admin: aranceles (catalog) and abonos (not gated by schedule pause)

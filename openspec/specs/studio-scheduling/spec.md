@@ -296,6 +296,15 @@ Admin MUST cancel an entire session instance (`POST /sessions/{id}/mass-cancel`)
 - **THEN** each active booking MUST be cancelled and credits returned
 - **AND** an audit entry MUST be written
 
+### Requirement: Semana modelo
+
+Admin or instructor MUST manage a fixed weekly grid per room×activity (`GET /model-week`, `PUT /model-week/slot`). Cells MUST tile room hours by activity duration; cupo MUST equal room capacity. Clearing a cell MUST NOT cascade to abonos or calendar. Students MAY appear on the grid without an abono. Abono assignment uses slots via `GET /students/{id}/model-week-slots?arancel_id=`.
+
+#### Scenario: Put and clear model cell
+- **GIVEN** a valid tiled weekday/start_time
+- **WHEN** students and instructor are saved then cleared
+- **THEN** the slot MUST upsert then delete without touching existing calendar bookings
+
 ## Out of scope
 - Timed reschedule / move-with-caps
 - Google Calendar sync

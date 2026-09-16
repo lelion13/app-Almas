@@ -59,9 +59,9 @@ In production, the configured `MP_REDIRECT_URI` MUST be reachable through the pu
 
 ### Requirement: Migrations
 
-Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`016`**.
+Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`017`**.
 
-Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_room_hours` + `008_room_hour_slots` + `009_room_share_space` + `010_ensure_room_share_space` + `011_activity_rooms` + `012_system_backups` + `013_instructor_activities` + `014_align_instructor_emails` + `015_booking_pack_nullable_student_email` + `016_aranceles_drop_packs`.
+Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_room_hours` + `008_room_hour_slots` + `009_room_share_space` + `010_ensure_room_share_space` + `011_activity_rooms` + `012_system_backups` + `013_instructor_activities` + `014_align_instructor_emails` + `015_booking_pack_nullable_student_email` + `016_aranceles_drop_packs` + `017_model_week`.
 
 `010` MUST be idempotent: add `studio_rooms.shares_space_with_room_id` if missing; drop leftover `space_id` / `studio_spaces` from the abandoned Espacios design. Operators MUST NOT assume stamp `009` means the share-space column exists (revision file was rewritten in place).
 
@@ -82,7 +82,7 @@ If a restored dump still reports an orphan revision `003` from a **discarded** e
 #### Scenario: Fresh deploy includes instructor activities junction
 - **GIVEN** an empty database and images containing studio migrations
 - **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST reach head `016` including `studio_instructor_activities`
+- **THEN** Alembic MUST reach head `017` including `studio_instructor_activities`
 
 #### Scenario: Upgrade from 012 leaves old instructors unlinked
 - **GIVEN** a database at head `012` with existing `studio_instructors` rows
@@ -103,7 +103,7 @@ If a restored dump still reports an orphan revision `003` from a **discarded** e
 #### Scenario: Fresh deploy includes backup tables
 - **GIVEN** an empty database and images containing migrations
 - **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST reach head `016` including `system_backup_config` and `system_backup_logs`
+- **THEN** Alembic MUST reach head `017` including `system_backup_config` and `system_backup_logs`
 
 #### Scenario: Upgrade from 010 leaves old activities unlinked
 - **GIVEN** a database at head `010` with existing `studio_activities` rows
@@ -113,7 +113,12 @@ If a restored dump still reports an orphan revision `003` from a **discarded** e
 #### Scenario: Fresh deploy applies studio room hours
 - **GIVEN** an empty database and images containing studio migrations
 - **WHEN** backend starts with migrate enabled
-- **THEN** Alembic MUST reach head `016` including room duration, multi-slot hours, `shares_space_with_room_id`, `studio_activity_rooms`, `studio_instructor_activities`, aligned emails, arancel/abono tables, and nullable booking `abono_id`
+- **THEN** Alembic MUST reach head `017` including room duration, multi-slot hours, `shares_space_with_room_id`, `studio_activity_rooms`, `studio_instructor_activities`, aligned emails, arancel/abono tables, model-week tables, and nullable booking `abono_id`
+
+#### Scenario: Upgrade 017 adds model week
+- **GIVEN** a database at head `016`
+- **WHEN** `017` applies
+- **THEN** tables `studio_model_week_slots`, `studio_model_week_students`, and `studio_abono_model_slots` MUST exist
 
 #### Scenario: Upgrade 016 drops packs and adds aranceles
 - **GIVEN** a database at head `015`

@@ -292,6 +292,45 @@ class Attendance(Base):
     )
 
 
+class StudioModelWeekSlot(Base):
+    __tablename__ = "studio_model_week_slots"
+    __table_args__ = (
+        UniqueConstraint("room_id", "activity_id", "weekday", "start_time", name="uq_studio_model_week_slot"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    room_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_rooms.id"), nullable=False)
+    activity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("studio_activities.id"), nullable=False)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)  # 0=Sunday .. 6=Saturday
+    start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    instructor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_instructors.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StudioModelWeekStudent(Base):
+    __tablename__ = "studio_model_week_students"
+
+    slot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_model_week_slots.id", ondelete="CASCADE"), primary_key=True
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_students.id"), primary_key=True
+    )
+
+
+class StudioAbonoModelSlot(Base):
+    __tablename__ = "studio_abono_model_slots"
+
+    abono_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_abonos.id", ondelete="CASCADE"), primary_key=True
+    )
+    slot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studio_model_week_slots.id"), primary_key=True
+    )
+
+
 class StudioSettings(Base):
     __tablename__ = "studio_settings"
 

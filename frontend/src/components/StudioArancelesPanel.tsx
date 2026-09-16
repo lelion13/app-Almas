@@ -13,9 +13,10 @@ function asText(value: unknown) {
 
 type Props = {
   activities: Item[];
+  readOnly?: boolean;
 };
 
-export default function StudioArancelesPanel({ activities }: Props) {
+export default function StudioArancelesPanel({ activities, readOnly = false }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -127,6 +128,7 @@ export default function StudioArancelesPanel({ activities }: Props) {
       {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">{error}</p>}
       {notice && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
 
+      {!readOnly && (
       <form onSubmit={(e) => void createSubmit(e)} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
         <label className="space-y-1 text-sm text-slate-700"><span>Nombre</span><input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required /></label>
         <label className="space-y-1 text-sm text-slate-700"><span>Valor</span><input className={inputClass} type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required /></label>
@@ -145,6 +147,7 @@ export default function StudioArancelesPanel({ activities }: Props) {
         </div>
         <div className="sm:col-span-2"><button type="submit" className={buttonClass} disabled={busy || !activityIds.length}>{busy ? "Guardando…" : "Guardar arancel"}</button></div>
       </form>
+      )}
 
       {items.length === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">No hay aranceles.</p>
@@ -160,12 +163,14 @@ export default function StudioArancelesPanel({ activities }: Props) {
                   <span>actividades: {(Array.isArray(item.activity_ids) ? item.activity_ids as string[] : []).map(activityName).join(", ") || "—"}</span>
                 </div>
               </div>
+              {!readOnly && (
               <div className="flex shrink-0 gap-2">
                 <button type="button" className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700" onClick={() => openEdit(item)}>Editar</button>
                 {item.active !== false && (
                   <button type="button" className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => void softDelete(item)}>Eliminar</button>
                 )}
               </div>
+              )}
             </li>
           ))}
         </ul>

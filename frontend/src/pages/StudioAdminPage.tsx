@@ -4,13 +4,14 @@ import { ApiError, apiFetch } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
 import StudioCalendarPanel from "@/components/StudioCalendarPanel";
 import StudioArancelesPanel from "@/components/StudioArancelesPanel";
+import StudioModelWeekPanel from "@/components/StudioModelWeekPanel";
 import StudioStudentAbonosModal from "@/components/StudioStudentAbonosModal";
 
 type Item = Record<string, unknown> & { id: string };
 /** Local draft slot; `key` is client-only until saved. */
 type HourSlot = { key: string; weekday: number; open_time: string; close_time: string };
 type Tab =
-  | "calendar" | "sites" | "rooms" | "activities" | "instructors" | "students"
+  | "calendar" | "model-week" | "sites" | "rooms" | "activities" | "instructors" | "students"
   | "aranceles" | "holidays" | "audit";
 
 const WEEKDAY_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -34,11 +35,18 @@ function newSlotKey() {
   return `slot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const TABS: Array<[Tab, string]> = [
+const ADMIN_TABS: Array<[Tab, string]> = [
   ["calendar", "Calendario"],
+  ["model-week", "Semana modelo"],
   ["sites", "Sedes"], ["rooms", "Salones"], ["activities", "Actividades"],
   ["instructors", "Instructores"], ["students", "Alumnos"], ["aranceles", "Aranceles"],
   ["holidays", "Feriados"], ["audit", "Auditoría"],
+];
+
+const INSTRUCTOR_TABS: Array<[Tab, string]> = [
+  ["model-week", "Semana modelo"],
+  ["students", "Alumnos"],
+  ["aranceles", "Aranceles"],
 ];
 
 const inputClass = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
@@ -71,7 +79,10 @@ function Field({ label, ...props }: React.InputHTMLAttributes<HTMLInputElement> 
 
 export default function StudioAdminPage() {
   const { me } = useAuth();
-  const [tab, setTab] = useState<Tab>("calendar");
+  const isAdmin = me?.role === "admin";
+  const isInstructor = me?.role === "instructor";
+  const tabs = isAdmin ? ADMIN_TABS : INSTRUCTOR_TABS;
+  const [tab, setTab] = useState<Tab>(isAdmin ? "calendar" : "model-week");
   const [data, setData] = useState<Record<string, Item[]>>({});
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +155,7 @@ export default function StudioAdminPage() {
     ]);
   }, []);
 
-  if (me?.role !== "admin") return <Navigate to="/" replace />;
+  if (!isAdmin && !isInstructor) return <Navigate to="/" replace />;
 
   async function refreshRoomsCatalog() {
     await load("roomsAll", "/api/v1/studio/rooms");
@@ -810,12 +821,12 @@ export default function StudioAdminPage() {
     <div className="space-y-6">
       <div><h1 className="text-2xl font-semibold text-slate-900">Estudio</h1><p className="mt-1 text-sm text-slate-600">Administrá la operación diaria del estudio.</p></div>
       <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="Secciones de Estudio">
-        {TABS.map(([key, label]) => <button type="button" key={key} onClick={() => { setTab(key); setError(null); setNotice(null); }} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${tab === key ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}>{label}</button>)}
+        {tabs.map(([key, label]) => <button type="button" key={key} onClick={() => { setTab(key); setError(null); setNotice(null); }} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${tab === key ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}>{label}</button>)}
       </nav>
       {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {notice && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
 
-      {tab === "calendar" && (
+      {tab === "calendar" && isAdmin && (
         <StudioCalendarPanel
           sites={list("sites")}
           rooms={list("roomsAll")}
@@ -825,7 +836,17 @@ export default function StudioAdminPage() {
         />
       )}
 
-      {tab === "sites" && <section className="space-y-4">
+      {tab === "model-week" && (
+        <StudioModelWeekPanel
+          sites={list("sites")}
+          rooms={list("roomsAll")}
+          activities={list("activities")}
+          instructors={list("instructors")}
+          students={list("students")}
+        />
+      )}
+
+      {tab === "sites" && isAdmin && <section className="space-y-4">
         {form((e) => {
           e.preventDefault();
           void submit("/api/v1/studio/sites", {
@@ -1314,6 +1335,7 @@ export default function StudioAdminPage() {
         )}
       </section>}
       {tab === "students" && <section className="space-y-4">
+        {isAdmin && (
         <form
           onSubmit={(e) => void createStudentSubmit(e)}
           autoComplete="off"
@@ -1334,6 +1356,7 @@ export default function StudioAdminPage() {
           <Field label="Notas médicas" name="studio-new-student-med" autoComplete="off" value={value("studentMedicalNotes")} onChange={(e) => setValue("studentMedicalNotes", e.target.value)} />
           <div className="sm:col-span-2"><button type="submit" className={buttonClass} disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button></div>
         </form>
+        )}
         {list("students").length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">No hay alumnos.</p>
         ) : (
@@ -1351,9 +1374,13 @@ export default function StudioAdminPage() {
                 </div>
                 <div className="flex shrink-0 gap-2">
                   <button type="button" className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700" onClick={() => setAbonosStudent(student)}>Abonos</button>
-                  <button type="button" className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700" onClick={() => openEditStudent(student)}>Editar</button>
-                  {student.active !== false && (
-                    <button type="button" className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => void softDeleteStudent(student)}>Eliminar</button>
+                  {isAdmin && (
+                    <>
+                      <button type="button" className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700" onClick={() => openEditStudent(student)}>Editar</button>
+                      {student.active !== false && (
+                        <button type="button" className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50" onClick={() => void softDeleteStudent(student)}>Eliminar</button>
+                      )}
+                    </>
                   )}
                 </div>
               </li>
@@ -1422,7 +1449,7 @@ export default function StudioAdminPage() {
         )}
       </section>}
 
-      {tab === "aranceles" && <StudioArancelesPanel activities={list("activities")} />}
+      {tab === "aranceles" && <StudioArancelesPanel activities={list("activities")} readOnly={!isAdmin} />}
 
       {tab === "holidays" && <section className="space-y-4">
         {form((e) => { e.preventDefault(); void submit("/api/v1/studio/holidays", { holiday_date: value("holidayDate"), name: value("holidayName"), site_id: id("holidaySite") || null }, "Feriado creado."); }, <><Field label="Fecha" type="date" value={value("holidayDate")} onChange={(e) => setValue("holidayDate", e.target.value)} required /><Field label="Nombre" value={value("holidayName")} onChange={(e) => setValue("holidayName", e.target.value)} required /><Select label="Sede (opcional)" field="holidaySite" items={selects.site} required={false} /></>)}

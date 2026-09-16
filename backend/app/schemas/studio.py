@@ -366,14 +366,14 @@ class AbonoCreate(BaseModel):
     student_id: UUID
     arancel_id: UUID
     paid_on: date = Field(default_factory=date.today)
-    series_ids: list[UUID] = Field(default_factory=list)
+    model_slot_ids: list[UUID] = Field(default_factory=list)
     booking_ids: list[UUID] = Field(default_factory=list)
     initial_payment: AbonoPaymentCreate | None = None
     notes: str | None = None
 
 
 class AbonoPatch(BaseModel):
-    series_ids: list[UUID] | None = None
+    model_slot_ids: list[UUID] | None = None
     booking_ids: list[UUID] | None = None
     notes: str | None = None
 
@@ -392,10 +392,62 @@ class AbonoResponse(ORMModel):
     status: str
     notes: str | None
     series_ids: list[UUID]
+    model_slot_ids: list[UUID]
     booking_ids: list[UUID]
     payments: list[AbonoPaymentResponse]
     created_at: datetime
     annulled_at: datetime | None = None
+
+
+class ModelWeekStudentInfo(BaseModel):
+    student_id: UUID
+    student_name: str
+
+
+class ModelWeekCell(BaseModel):
+    weekday: int
+    start_time: time
+    end_time: time
+    duration_minutes: int
+    capacity: int
+    booked_count: int
+    remaining_capacity: int
+    slot_id: UUID | None = None
+    instructor_id: UUID | None = None
+    instructor_name: str | None = None
+    students: list[ModelWeekStudentInfo] = Field(default_factory=list)
+
+
+class ModelWeekResponse(BaseModel):
+    room_id: UUID
+    room_name: str
+    site_id: UUID
+    site_name: str
+    activity_id: UUID
+    activity_name: str
+    capacity: int
+    cells: list[ModelWeekCell]
+
+
+class ModelWeekSlotPut(BaseModel):
+    room_id: UUID
+    activity_id: UUID
+    weekday: int = Field(ge=0, le=6)
+    start_time: time
+    instructor_id: UUID | None = None
+    student_ids: list[UUID] = Field(default_factory=list)
+
+
+class StudentModelSlotResponse(BaseModel):
+    slot_id: UUID
+    room_id: UUID
+    room_name: str
+    activity_id: UUID
+    activity_name: str
+    weekday: int
+    start_time: time
+    instructor_id: UUID
+    instructor_name: str
 
 
 class EligibleBookingResponse(BaseModel):

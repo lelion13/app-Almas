@@ -22,6 +22,7 @@ from app.models.studio import (
     ClassSeries,
     ClassSession,
     StudioAbono,
+    StudioAbonoModelSlot,
     StudioAbonoPayment,
     StudioAbonoSeries,
     StudioActivity,
@@ -32,6 +33,8 @@ from app.models.studio import (
     StudioHoliday,
     StudioInstructor,
     StudioInstructorActivity,
+    StudioModelWeekSlot,
+    StudioModelWeekStudent,
     StudioRoom,
     StudioRoomHours,
     StudioSettings,
@@ -52,6 +55,10 @@ from app.schemas.studio import (
     CalendarSlot,
     EligibleBookingResponse,
     InstructorResponse,
+    ModelWeekCell,
+    ModelWeekResponse,
+    ModelWeekStudentInfo,
+    StudentModelSlotResponse,
     StudentResponse,
 )
 from app.services.studio_audit import write_audit
@@ -1429,10 +1436,17 @@ def serialize_abono(db: Session, abono: StudioAbono) -> AbonoResponse:
         status=abono.status,
         notes=abono.notes,
         series_ids=_abono_series_ids(db, abono.id),
+        model_slot_ids=_abono_model_slot_ids(db, abono.id),
         booking_ids=_abono_booking_ids(db, abono.id),
         payments=[AbonoPaymentResponse.model_validate(p) for p in payments],
         created_at=abono.created_at,
         annulled_at=abono.annulled_at,
+    )
+
+
+def _abono_model_slot_ids(db: Session, abono_id: UUID) -> list[UUID]:
+    return list(
+        db.scalars(select(StudioAbonoModelSlot.slot_id).where(StudioAbonoModelSlot.abono_id == abono_id)).all()
     )
 
 
@@ -1449,23 +1463,283 @@ def _assert_no_activity_overlap(db: Session, student_id: UUID, activity_ids: set
             )
 
 
-def _validate_and_set_series(db: Session, abono: StudioAbono, arancel: StudioArancel, series_ids: list[UUID]) -> None:
-    unique_ids = list(dict.fromkeys(series_ids))
+def _upsert_series_from_model_slot(db: Session, slot: StudioModelWeekSlot) -> ClassSeries:
+    room = _get(db, StudioRoom, slot.room_id, "Room")
+    activity = _get(db, StudioActivity, slot.activity_id, "Activity")
+    existing = db.scalar(
+        select(ClassSeries).where(
+            ClassSeries.active.is_(True),
+            ClassSeries.room_id == slot.room_id,
+            ClassSeries.activity_id == slot.activity_id,
+            ClassSeries.weekday == slot.weekday,
+            ClassSeries.start_time == slot.start_time,
+        )
+    )
+    if existing is not None:
+        existing.instructor_id = slot.instructor_id
+        existing.capacity = room.capacity
+        existing.duration_minutes = activity.default_duration_minutes
+        db.flush()
+        return existing
+    series = ClassSeries(
+        site_id=room.site_id,
+        room_id=slot.room_id,
+        activity_id=slot.activity_id,
+        instructor_id=slot.instructor_id,
+        weekday=slot.weekday,
+        start_time=slot.start_time,
+        duration_minutes=activity.default_duration_minutes,
+        capacity=room.capacity,
+        level="inicial",
+        active=True,
+    )
+    db.add(series)
+    db.flush()
+    return series
+
+
+def _validate_and_set_model_slots(
+    db: Session, abono: StudioAbono, arancel: StudioArancel, model_slot_ids: list[UUID]
+) -> None:
+    unique_ids = list(dict.fromkeys(model_slot_ids))
+    if not unique_ids:
+        _error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "El alumno no tiene horarios en la semana modelo para este arancel. Asignalos antes en Semana modelo.",
+        )
     if len(unique_ids) > arancel.classes_per_week:
         _error(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"Podés elegir hasta {arancel.classes_per_week} series (clases por semana del arancel).",
+            f"Podés elegir hasta {arancel.classes_per_week} horarios (clases por semana del arancel).",
         )
     allowed_activities = set(_arancel_activity_ids(db, arancel.id))
-    for series_id in unique_ids:
-        series = _get(db, ClassSeries, series_id, "Series")
-        if not series.active:
-            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Todas las series deben estar activas.")
-        if series.activity_id not in allowed_activities:
-            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Las series deben pertenecer a las actividades del arancel.")
+    series_ids: list[UUID] = []
+    for slot_id in unique_ids:
+        slot = _get(db, StudioModelWeekSlot, slot_id, "Model week slot")
+        if slot.activity_id not in allowed_activities:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Las celdas deben ser de las actividades del arancel.")
+        assigned = db.scalar(
+            select(StudioModelWeekStudent).where(
+                StudioModelWeekStudent.slot_id == slot.id,
+                StudioModelWeekStudent.student_id == abono.student_id,
+            )
+        )
+        if assigned is None:
+            _error(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "El alumno debe estar asignado en la semana modelo a esas celdas antes de cargar el abono.",
+            )
+        series = _upsert_series_from_model_slot(db, slot)
+        series_ids.append(series.id)
+
+    db.execute(delete(StudioAbonoModelSlot).where(StudioAbonoModelSlot.abono_id == abono.id))
+    for slot_id in unique_ids:
+        db.add(StudioAbonoModelSlot(abono_id=abono.id, slot_id=slot_id))
     db.execute(delete(StudioAbonoSeries).where(StudioAbonoSeries.abono_id == abono.id))
-    for series_id in unique_ids:
+    for series_id in series_ids:
         db.add(StudioAbonoSeries(abono_id=abono.id, series_id=series_id))
+
+
+def build_model_week(db: Session, room_id: UUID, activity_id: UUID) -> ModelWeekResponse:
+    room = _get(db, StudioRoom, room_id, "Room")
+    activity = _get(db, StudioActivity, activity_id, "Activity")
+    if not room.active or not activity.active:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Salón y actividad deben estar activos.")
+    linked = db.scalar(
+        select(StudioActivityRoom).where(
+            StudioActivityRoom.room_id == room_id,
+            StudioActivityRoom.activity_id == activity_id,
+        )
+    )
+    if linked is None:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "La actividad no está vinculada a este salón.")
+    site = _get(db, StudioSite, room.site_id, "Site")
+    duration = int(activity.default_duration_minutes)
+    hours = db.scalars(
+        select(StudioRoomHours).where(StudioRoomHours.room_id == room_id).order_by(StudioRoomHours.weekday, StudioRoomHours.open_time)
+    ).all()
+    slots = db.scalars(
+        select(StudioModelWeekSlot).where(
+            StudioModelWeekSlot.room_id == room_id,
+            StudioModelWeekSlot.activity_id == activity_id,
+        )
+    ).all()
+    slot_by_key = {(int(s.weekday), _to_minutes(s.start_time)): s for s in slots}
+    slot_ids = [s.id for s in slots]
+    students_by_slot: dict[UUID, list[ModelWeekStudentInfo]] = {s.id: [] for s in slots}
+    if slot_ids:
+        rows = db.execute(
+            select(StudioModelWeekStudent, StudioStudent)
+            .join(StudioStudent, StudioStudent.id == StudioModelWeekStudent.student_id)
+            .where(StudioModelWeekStudent.slot_id.in_(slot_ids))
+        ).all()
+        for link, student in rows:
+            students_by_slot.setdefault(link.slot_id, []).append(
+                ModelWeekStudentInfo(student_id=student.id, student_name=student.full_name)
+            )
+    instructor_ids = {s.instructor_id for s in slots}
+    instructor_names = {
+        i.id: i.full_name
+        for i in db.scalars(select(StudioInstructor).where(StudioInstructor.id.in_(instructor_ids))).all()
+    } if instructor_ids else {}
+
+    cells: list[ModelWeekCell] = []
+    for hour_row in hours:
+        wd = int(hour_row.weekday)
+        for start_t, end_t in tile_open_window(hour_row.open_time, hour_row.close_time, duration):
+            stored = slot_by_key.get((wd, _to_minutes(start_t)))
+            students = students_by_slot.get(stored.id, []) if stored else []
+            booked = len(students)
+            cells.append(
+                ModelWeekCell(
+                    weekday=wd,
+                    start_time=start_t,
+                    end_time=end_t,
+                    duration_minutes=duration,
+                    capacity=int(room.capacity),
+                    booked_count=booked,
+                    remaining_capacity=max(int(room.capacity) - booked, 0),
+                    slot_id=stored.id if stored else None,
+                    instructor_id=stored.instructor_id if stored else None,
+                    instructor_name=instructor_names.get(stored.instructor_id) if stored else None,
+                    students=students,
+                )
+            )
+    cells.sort(key=lambda c: (c.weekday, c.start_time))
+    return ModelWeekResponse(
+        room_id=room.id,
+        room_name=room.name,
+        site_id=site.id,
+        site_name=site.name,
+        activity_id=activity.id,
+        activity_name=activity.name,
+        capacity=int(room.capacity),
+        cells=cells,
+    )
+
+
+def put_model_week_slot(db: Session, values: dict[str, Any], actor_user_id: UUID | None = None) -> ModelWeekResponse:
+    room = _get(db, StudioRoom, values["room_id"], "Room")
+    activity = _get(db, StudioActivity, values["activity_id"], "Activity")
+    linked = db.scalar(
+        select(StudioActivityRoom).where(
+            StudioActivityRoom.room_id == room.id,
+            StudioActivityRoom.activity_id == activity.id,
+        )
+    )
+    if linked is None:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "La actividad no está vinculada a este salón.")
+
+    student_ids = list(dict.fromkeys(values.get("student_ids") or []))
+    weekday = int(values["weekday"])
+    start_time = values["start_time"]
+    duration = int(activity.default_duration_minutes)
+    hours = db.scalars(
+        select(StudioRoomHours).where(StudioRoomHours.room_id == room.id, StudioRoomHours.weekday == weekday)
+    ).all()
+    valid = False
+    for hour_row in hours:
+        for start_t, _end in tile_open_window(hour_row.open_time, hour_row.close_time, duration):
+            if start_t == start_time:
+                valid = True
+                break
+        if valid:
+            break
+    if not valid:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Ese horario no existe en la grilla del salón/actividad.")
+
+    slot = db.scalar(
+        select(StudioModelWeekSlot).where(
+            StudioModelWeekSlot.room_id == room.id,
+            StudioModelWeekSlot.activity_id == activity.id,
+            StudioModelWeekSlot.weekday == weekday,
+            StudioModelWeekSlot.start_time == start_time,
+        )
+    )
+    if not student_ids:
+        if slot is not None:
+            db.execute(delete(StudioModelWeekStudent).where(StudioModelWeekStudent.slot_id == slot.id))
+            db.delete(slot)
+            write_audit(db, actor_user_id, "clear_model_week_slot", "model_week_slot", slot.id, None)
+        db.commit()
+        return build_model_week(db, room.id, activity.id)
+
+    if values.get("instructor_id") is None:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Seleccioná un instructor para la celda.")
+    instructor = _get(db, StudioInstructor, values["instructor_id"], "Instructor")
+    if not instructor.active:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El instructor no está activo.")
+    allowed = set(get_instructor_activity_ids(db, instructor.id))
+    if activity.id not in allowed:
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "El instructor no está vinculado a esta actividad.")
+    if len(student_ids) > int(room.capacity):
+        _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "No hay cupo en el salón para tantos alumnos.")
+    for sid in student_ids:
+        student = _get(db, StudioStudent, sid, "Student")
+        if not student.active:
+            _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "Todos los alumnos deben estar activos.")
+
+    if slot is None:
+        slot = StudioModelWeekSlot(
+            room_id=room.id,
+            activity_id=activity.id,
+            weekday=weekday,
+            start_time=start_time,
+            instructor_id=instructor.id,
+        )
+        db.add(slot)
+        db.flush()
+    else:
+        slot.instructor_id = instructor.id
+        db.execute(delete(StudioModelWeekStudent).where(StudioModelWeekStudent.slot_id == slot.id))
+    for sid in student_ids:
+        db.add(StudioModelWeekStudent(slot_id=slot.id, student_id=sid))
+    write_audit(
+        db,
+        actor_user_id,
+        "put_model_week_slot",
+        "model_week_slot",
+        slot.id,
+        {"students": len(student_ids), "weekday": weekday},
+    )
+    db.commit()
+    return build_model_week(db, room.id, activity.id)
+
+
+def list_student_model_slots_for_arancel(
+    db: Session, student_id: UUID, arancel_id: UUID
+) -> list[StudentModelSlotResponse]:
+    _get(db, StudioStudent, student_id, "Student")
+    arancel = _get(db, StudioArancel, arancel_id, "Arancel")
+    activity_ids = _arancel_activity_ids(db, arancel.id)
+    if not activity_ids:
+        return []
+    rows = db.execute(
+        select(StudioModelWeekSlot, StudioRoom, StudioActivity, StudioInstructor)
+        .join(StudioModelWeekStudent, StudioModelWeekStudent.slot_id == StudioModelWeekSlot.id)
+        .join(StudioRoom, StudioRoom.id == StudioModelWeekSlot.room_id)
+        .join(StudioActivity, StudioActivity.id == StudioModelWeekSlot.activity_id)
+        .join(StudioInstructor, StudioInstructor.id == StudioModelWeekSlot.instructor_id)
+        .where(
+            StudioModelWeekStudent.student_id == student_id,
+            StudioModelWeekSlot.activity_id.in_(activity_ids),
+        )
+        .order_by(StudioModelWeekSlot.weekday, StudioModelWeekSlot.start_time)
+    ).all()
+    return [
+        StudentModelSlotResponse(
+            slot_id=slot.id,
+            room_id=room.id,
+            room_name=room.name,
+            activity_id=activity.id,
+            activity_name=activity.name,
+            weekday=slot.weekday,
+            start_time=slot.start_time,
+            instructor_id=instructor.id,
+            instructor_name=instructor.full_name,
+        )
+        for slot, room, activity, instructor in rows
+    ]
 
 
 def _try_enroll_student_on_date(
@@ -1620,12 +1894,11 @@ def create_abono(db: Session, values: dict[str, Any], actor_user_id: UUID | None
     )
     db.add(abono)
     db.flush()
-    _validate_and_set_series(db, abono, arancel, values.get("series_ids") or [])
+    _validate_and_set_model_slots(db, abono, arancel, values.get("model_slot_ids") or [])
     db.flush()
     materialized = materialize_abono_period_bookings(db, abono)
     booking_ids = values.get("booking_ids")
     if booking_ids is None:
-        # Default: cover all period turns for the chosen series (user can unlink later).
         booking_ids = materialized
     _link_bookings(db, abono, booking_ids)
 
@@ -1663,10 +1936,9 @@ def update_abono(db: Session, abono_id: UUID, values: dict[str, Any], actor_user
 
     if "notes" in values:
         abono.notes = values["notes"]
-    if "series_ids" in values and values["series_ids"] is not None:
-        _validate_and_set_series(db, abono, arancel, values["series_ids"])
+    if "model_slot_ids" in values and values["model_slot_ids"] is not None:
+        _validate_and_set_model_slots(db, abono, arancel, values["model_slot_ids"])
         db.flush()
-        # Drop links that no longer match series after series change.
         series_ids = set(_abono_series_ids(db, abono.id))
         for booking in db.scalars(select(Booking).where(Booking.abono_id == abono.id)).all():
             session = _get(db, ClassSession, booking.session_id, "Session")
@@ -1674,7 +1946,6 @@ def update_abono(db: Session, abono_id: UUID, values: dict[str, Any], actor_user
                 booking.abono_id = None
         materialized = materialize_abono_period_bookings(db, abono)
         if "booking_ids" not in values or values["booking_ids"] is None:
-            # Keep existing covered bookings that still match + cover newly materialized.
             keep = set(_abono_booking_ids(db, abono.id)) | set(materialized)
             _link_bookings(db, abono, list(keep))
     if "booking_ids" in values and values["booking_ids"] is not None:
