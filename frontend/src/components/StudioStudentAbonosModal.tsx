@@ -3,7 +3,7 @@ import { ApiError, apiFetch } from "@/services/api";
 
 type Item = Record<string, unknown> & { id: string };
 
-const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const inputClass = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
 const buttonClass = "rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60";
 
@@ -184,7 +184,7 @@ export default function StudioStudentAbonosModal({ student, onClose }: Props) {
       <div className="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-lg">
         <div className="border-b border-slate-100 p-4">
           <h3 className="text-lg font-semibold text-slate-900">Abonos · {asText(student.full_name)}</h3>
-          <p className="mt-1 text-xs text-slate-500">Periodo móvil desde el día de pago. Los turnos se asocian a mano.</p>
+          <p className="mt-1 text-xs text-slate-500">Al guardar series se generan los turnos del periodo en el calendario. Los días usan la misma convención que el calendario (Dom=0).</p>
           {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
         </div>
 

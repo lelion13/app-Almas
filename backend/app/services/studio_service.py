@@ -1468,6 +1468,106 @@ def _validate_and_set_series(db: Session, abono: StudioAbono, arancel: StudioAra
         db.add(StudioAbonoSeries(abono_id=abono.id, series_id=series_id))
 
 
+def _try_enroll_student_on_date(
+    db: Session, *, series: ClassSeries, session_date: date, student_id: UUID
+) -> Booking | None:
+    """Create session+booking for one date without committing. Skip holidays/full/mismatch."""
+    if room_hours_weekday_from_date(session_date) != int(series.weekday):
+        return None
+    holiday = db.scalar(
+        select(StudioHoliday).where(
+            StudioHoliday.holiday_date == session_date,
+            or_(StudioHoliday.site_id.is_(None), StudioHoliday.site_id == series.site_id),
+        )
+    )
+    if holiday is not None:
+        return None
+
+    existing_session = db.scalar(
+        select(ClassSession).where(
+            ClassSession.series_id == series.id,
+            ClassSession.session_date == session_date,
+        )
+    )
+    if existing_session is not None and existing_session.status == "cancelled":
+        return None
+    if existing_session is None:
+        session = ClassSession(
+            series_id=series.id,
+            site_id=series.site_id,
+            room_id=series.room_id,
+            activity_id=series.activity_id,
+            instructor_id=series.instructor_id,
+            session_date=session_date,
+            start_time=series.start_time,
+            duration_minutes=series.duration_minutes,
+            capacity=series.capacity,
+            level=series.level,
+            status="scheduled",
+        )
+        db.add(session)
+        db.flush()
+    else:
+        session = existing_session
+
+    session = db.scalar(select(ClassSession).where(ClassSession.id == session.id).with_for_update())
+    if session is None:
+        return None
+
+    existing = db.scalar(
+        select(Booking).where(Booking.student_id == student_id, Booking.session_id == session.id)
+    )
+    if existing is not None and existing.status == "booked":
+        return existing
+
+    booked_count = (
+        db.scalar(
+            select(func.count(Booking.id)).where(Booking.session_id == session.id, Booking.status == "booked")
+        )
+        or 0
+    )
+    if booked_count >= session.capacity:
+        return None
+
+    if existing is not None:
+        existing.status = "booked"
+        existing.abono_id = None
+        existing.source = "calendar"
+        existing.cancelled_at = None
+        return existing
+
+    booking = Booking(
+        student_id=student_id,
+        session_id=session.id,
+        abono_id=None,
+        source="calendar",
+        status="booked",
+    )
+    db.add(booking)
+    db.flush()
+    return booking
+
+
+def materialize_abono_period_bookings(db: Session, abono: StudioAbono) -> list[UUID]:
+    """Ensure calendar bookings exist for each chosen series date inside the abono period.
+
+    Does not cover (link) them to the abono; caller may link afterwards. Does not commit.
+    """
+    series_ids = _abono_series_ids(db, abono.id)
+    created_or_existing: list[UUID] = []
+    for series_id in series_ids:
+        series = _get(db, ClassSeries, series_id, "Series")
+        day = abono.starts_on
+        while day <= abono.ends_on:
+            booking = _try_enroll_student_on_date(
+                db, series=series, session_date=day, student_id=abono.student_id
+            )
+            if booking is not None:
+                created_or_existing.append(booking.id)
+            day += timedelta(days=1)
+    return created_or_existing
+
+
 def _link_bookings(db: Session, abono: StudioAbono, booking_ids: list[UUID]) -> None:
     series_ids = set(_abono_series_ids(db, abono.id))
     desired = set(booking_ids)
@@ -1522,7 +1622,12 @@ def create_abono(db: Session, values: dict[str, Any], actor_user_id: UUID | None
     db.flush()
     _validate_and_set_series(db, abono, arancel, values.get("series_ids") or [])
     db.flush()
-    _link_bookings(db, abono, values.get("booking_ids") or [])
+    materialized = materialize_abono_period_bookings(db, abono)
+    booking_ids = values.get("booking_ids")
+    if booking_ids is None:
+        # Default: cover all period turns for the chosen series (user can unlink later).
+        booking_ids = materialized
+    _link_bookings(db, abono, booking_ids)
 
     initial = values.get("initial_payment")
     if initial:
@@ -1567,6 +1672,11 @@ def update_abono(db: Session, abono_id: UUID, values: dict[str, Any], actor_user
             session = _get(db, ClassSession, booking.session_id, "Session")
             if session.series_id not in series_ids:
                 booking.abono_id = None
+        materialized = materialize_abono_period_bookings(db, abono)
+        if "booking_ids" not in values or values["booking_ids"] is None:
+            # Keep existing covered bookings that still match + cover newly materialized.
+            keep = set(_abono_booking_ids(db, abono.id)) | set(materialized)
+            _link_bookings(db, abono, list(keep))
     if "booking_ids" in values and values["booking_ids"] is not None:
         _link_bookings(db, abono, values["booking_ids"])
 

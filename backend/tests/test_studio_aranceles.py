@@ -18,3 +18,11 @@ def test_abono_period_inclusive():
     assert abono_period_contains(start, end, date(2026, 2, 15))
     assert not abono_period_contains(start, end, date(2026, 2, 16))
     assert not abono_period_contains(start, end, date(2026, 1, 14))
+
+
+def test_room_hours_weekday_sunday_zero():
+    from app.services.studio_service import room_hours_weekday_from_date
+    # 2026-09-21 is Monday
+    assert room_hours_weekday_from_date(date(2026, 9, 21)) == 1
+    # 2026-09-20 is Sunday
+    assert room_hours_weekday_from_date(date(2026, 9, 20)) == 0

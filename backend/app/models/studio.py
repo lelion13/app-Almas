@@ -140,7 +140,7 @@ class ClassSeries(Base):
     instructor_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("studio_instructors.id"), nullable=False
     )
-    weekday: Mapped[int] = mapped_column(Integer, nullable=False)  # 0=Mon .. 6=Sun
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)  # 0=Sunday .. 6=Saturday (same as room hours / calendar)
     start_time: Mapped[time] = mapped_column(Time, nullable=False)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
     capacity: Mapped[int] = mapped_column(Integer, nullable=False)
