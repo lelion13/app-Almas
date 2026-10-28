@@ -73,7 +73,7 @@ Behavioral changes SHOULD go through OpenSpec (`openspec/changes/{name}/`) and m
 
 ### Requirement: Product scope (current)
 
-In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy, admin Conciliación Mercado Pago (OAuth multi-account + on-demand **Movimientos** via Payments search), **and studio operations** (multi-sede rooms/activities, students, calendar, aranceles/abonos, instructor/alumno portals) **coexisting** with SigueFit/closings/MP.
+In scope: monthly closings, SigueFit income imports, expense Excel imports, manual expenses, teachers catalog, JWT auth, VPS deploy, admin Conciliación Mercado Pago (OAuth multi-account + on-demand **Movimientos** via Payments search), **and studio operations** (multi-sede rooms/activities, students, calendar, semana modelo, aranceles/abonos, instructor/alumno portals) **coexisting** with SigueFit/closings/MP.
 
 Behavioral sources of truth:
 - MP: `openspec/specs/mercado-pago/spec.md` — lessons: `docs/mp-conciliation-lessons.md`
@@ -95,6 +95,10 @@ Explicitly out of product scope today:
 - **GIVEN** the platform product scope
 - **WHEN** an admin uses Conciliación
 - **THEN** OAuth account linking and on-demand income fetch MUST be considered in-scope behavior
+
+### Requirement: Instructor Estudio tabs
+
+Instructors MUST access Estudio with tabs needed for semana modelo and abonos (at least Semana modelo, Alumnos/Abonos, Aranceles read-only). Catalog mutations (sites/rooms/activities CRUD) MAY remain admin-only.
 
 ### Requirement: Database Backups to S3-Compatible Storage
 

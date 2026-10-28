@@ -298,15 +298,34 @@ Admin MUST cancel an entire session instance (`POST /sessions/{id}/mass-cancel`)
 
 ### Requirement: Semana modelo
 
-Admin or instructor MUST manage a fixed weekly grid per room×activity (`GET /model-week`, `PUT /model-week/slot`). Cells MUST tile room hours by activity duration; cupo MUST equal room capacity. Clearing a cell MUST NOT cascade to abonos or calendar. Students MAY appear on the grid without an abono. Abono assignment uses slots via `GET /students/{id}/model-week-slots?arancel_id=`.
+Admin or instructor MUST manage a model week per room×activity (`GET /studio/model-week?room_id&activity_id`, `PUT /studio/model-week/slot`). Cells MUST be generated from room hours tiled by activity duration (same tiling as calendar). Cupo MUST equal room capacity. Each filled cell MUST store `instructor_id` (linked to that activity) and student assignments (≤ capacity). Students MAY appear on the grid without an abono.
 
-#### Scenario: Put and clear model cell
-- **GIVEN** a valid tiled weekday/start_time
-- **WHEN** students and instructor are saved then cleared
-- **THEN** the slot MUST upsert then delete without touching existing calendar bookings
+Clearing a cell (empty `student_ids`) MUST delete the model-week slot and its student links. Clearing MUST NOT cascade to existing abonos, ClassSeries, or calendar bookings. `instructor_id` MAY be omitted when clearing.
+
+Abono assignment lists the student's cells via `GET /studio/students/{id}/model-week-slots?arancel_id=`.
+
+#### Scenario: Load grid for room and activity
+- **GIVEN** an active room with hours and an activity linked to that room
+- **WHEN** `GET /studio/model-week?room_id&activity_id`
+- **THEN** the response MUST list tiled cells with capacity and any stored instructor/students
+
+#### Scenario: Put students on a cell
+- **GIVEN** a valid tiled start_time for that weekday
+- **WHEN** `PUT /studio/model-week/slot` with instructor and student_ids
+- **THEN** the slot MUST be upserted and students replaced as a set
+
+#### Scenario: Clear cell without cascade
+- **GIVEN** a filled model-week slot linked historically to an abono
+- **WHEN** the slot is cleared
+- **THEN** the slot MUST be removed and existing abono/calendar data MUST remain
+
+### Requirement: Instructor access to model week
+
+Instructors MUST read catalog lists needed for the grid (sites, rooms, activities, instructors, students) and MUST edit any room×activity model week. The instructor assigned to a cell MUST still be linked to that activity.
 
 ## Out of scope
 - Timed reschedule / move-with-caps
 - Google Calendar sync
 - Automatic notifications
 - Re-validating all historical series after hours edit
+- Cascading deletes from semana modelo to abonos/calendar

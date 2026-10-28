@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import {
   ApiError,
+  apiFetch,
   getBackupConfig,
   getBackupLogs,
   getBackupStatus,
@@ -12,6 +13,14 @@ import {
   type BackupStatus,
 } from "@/services/api";
 import { useAuth } from "@/hooks/useAuth";
+
+type GbpStatus = {
+  connected: boolean;
+  google_account_email: string | null;
+  token_last4: string | null;
+  connected_at: string | null;
+  location_configured: boolean;
+};
 
 const WEEKDAYS = [
   { value: 0, label: "Lunes" },
@@ -57,6 +66,8 @@ export default function SettingsBackupPage() {
 
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [gbp, setGbp] = useState<GbpStatus | null>(null);
+  const [gbpBusy, setGbpBusy] = useState(false);
 
   // Form states
   const [enabled, setEnabled] = useState(false);
@@ -70,6 +81,46 @@ export default function SettingsBackupPage() {
   const [s3SecretAccessKey, setS3SecretAccessKey] = useState("");
   const [s3Prefix, setS3Prefix] = useState("almas-backups/");
   const [retentionCount, setRetentionCount] = useState(15);
+
+  async function loadGbp() {
+    try {
+      const status = await apiFetch<GbpStatus>("/api/v1/marketing/gbp/status");
+      setGbp(status);
+    } catch {
+      setGbp(null);
+    }
+  }
+
+  async function connectGbp() {
+    setGbpBusy(true);
+    setErrorMsg(null);
+    try {
+      const res = await apiFetch<{ authorization_url: string }>("/api/v1/marketing/gbp/oauth/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      window.location.href = res.authorization_url;
+    } catch (e) {
+      setErrorMsg(e instanceof ApiError ? e.message : "No se pudo iniciar OAuth de Google.");
+      setGbpBusy(false);
+    }
+  }
+
+  async function disconnectGbp() {
+    if (!window.confirm("¿Desconectar Google Business Profile?")) return;
+    setGbpBusy(true);
+    setErrorMsg(null);
+    try {
+      await apiFetch("/api/v1/marketing/gbp/connection", { method: "DELETE" });
+      await loadGbp();
+      setSuccessMsg("Google Business Profile desconectado.");
+    } catch (e) {
+      setErrorMsg(e instanceof ApiError ? e.message : "No se pudo desconectar GBP.");
+    } finally {
+      setGbpBusy(false);
+    }
+  }
 
   async function loadData() {
     setErrorMsg(null);
@@ -104,6 +155,12 @@ export default function SettingsBackupPage() {
 
   useEffect(() => {
     void loadData();
+    void loadGbp();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gbp") === "ok") setSuccessMsg("Google Business Profile conectado.");
+    if (params.get("gbp") === "error") {
+      setErrorMsg(`OAuth Google: ${params.get("detail") || "falló"}`);
+    }
   }, []);
 
   if (me?.role !== "admin") {
@@ -226,6 +283,54 @@ export default function SettingsBackupPage() {
           </button>
         </div>
       )}
+
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Google Business Profile</h2>
+          <p className="text-sm text-slate-500">
+            Conectá la cuenta Google del local. Posts y respuestas a reseñas se operan por Telegram.
+          </p>
+        </div>
+        {gbp ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-slate-700">
+              <div>
+                Estado:{" "}
+                <span className={gbp.connected ? "font-medium text-emerald-700" : "font-medium text-slate-500"}>
+                  {gbp.connected ? "Conectado" : "No conectado"}
+                </span>
+              </div>
+              {gbp.google_account_email && <div className="text-xs text-slate-500">Cuenta: {gbp.google_account_email}</div>}
+              {!gbp.location_configured && (
+                <div className="mt-1 text-xs text-amber-700">Faltan GBP_ACCOUNT_ID / GBP_LOCATION_ID en el entorno.</div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {!gbp.connected ? (
+                <button
+                  type="button"
+                  disabled={gbpBusy}
+                  onClick={() => void connectGbp()}
+                  className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                >
+                  {gbpBusy ? "Redirigiendo…" : "Conectar Google"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={gbpBusy}
+                  onClick={() => void disconnectGbp()}
+                  className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  Desconectar
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">No se pudo cargar el estado de GBP (¿migraciones / API?).</p>
+        )}
+      </section>
 
       {/* Status Highlights */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

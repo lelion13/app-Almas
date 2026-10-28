@@ -30,7 +30,7 @@
 
 ## Estudio (Studio Ops MVP)
 - Coexiste con cierres SigueFit: no los reemplaza.
-- Migración: `alembic upgrade head` (revisión **`017`**: semana modelo; **`016`**: aranceles/abonos + drop packs).
+- Migración: `alembic upgrade head` (revisión **`018`**: marketing GBP; **`017`**: semana modelo; **`016`**: aranceles/abonos).
 - API: `/api/v1/studio` (JWT; roles `admin` / `instructor` / `alumno`).
 - UI:
   - Admin → **Estudio** (`/studio`): **Calendario**; **Semana modelo**; **Aranceles**; sedes; salones; actividades; instructores; alumnos (Abonos); feriados; auditoría.
@@ -41,6 +41,11 @@
 - Specs: `openspec/specs/studio-*.md` (+ `studio-aranceles`).
 - Lecciones: `docs/studio-ops-lessons.md`
 - Archive: `openspec/changes/archive/2026-09-16-studio-aranceles/`
+
+## Marketing GBP (Telegram + Google)
+- Setup: `docs/marketing-gbp-setup.md` (webhook Telegram, OAuth GBP, Pub/Sub push).
+- Admin → **Configuración**: conectar Google Business Profile.
+- Operación diaria: bot Telegram (posts + alertas/respuestas de reseñas).
 
 ## Backups de Base de Datos (S3 / Cloudflare R2)
 - Menú admin **Configuración** (`/configuracion`).

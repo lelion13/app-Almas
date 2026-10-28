@@ -6,8 +6,8 @@ Fast navigation for app-Almas. **Behavioral source of truth:** `openspec/specs/*
 ## SDD (OpenSpec)
 - Config: `openspec/config.yaml`
 - Domains: `auth`, `monthly-closings`, `siguefit-imports`, `expense-imports`, `manual-expenses`, `teachers`, `deployment`, `platform`, `mercado-pago`, `studio-sites`, `studio-scheduling`, `studio-students`, `studio-aranceles, studio-packs (retired)`, `studio-audit`
-- Active changes: `openspec/changes/{name}/` → `studio-semana-modelo`
-- Studio lessons: `docs/studio-ops-lessons.md` (semana modelo in progress; Alembic head **017**; aranceles archive `2026-09-16-studio-aranceles`)
+- Active changes: `openspec/changes/{name}/` → `marketing-gbp` (apply done; ops: webhook Telegram + Pub/Sub + OAuth; landing deferred)
+- Marketing setup: `docs/marketing-gbp-setup.md` · Alembic head **`018`**- Studio lessons: `docs/studio-ops-lessons.md` (semana modelo shipped; archive `2026-10-07-studio-semana-modelo`; Alembic head **017**)
 - MP Conciliación lessons: `docs/mp-conciliation-lessons.md`
 - Skill registry: `.atl/skill-registry.md`
 

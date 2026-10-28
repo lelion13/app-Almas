@@ -1,6 +1,17 @@
 from fastapi import APIRouter
 
-from app.api.routers import auth, backup, closings, expense_imports, expenses, imports, mercado_pago, studio, teachers
+from app.api.routers import (
+    auth,
+    backup,
+    closings,
+    expense_imports,
+    expenses,
+    imports,
+    marketing,
+    mercado_pago,
+    studio,
+    teachers,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -12,4 +23,5 @@ api_router.include_router(teachers.router, prefix="/teachers", tags=["teachers"]
 api_router.include_router(mercado_pago.router)
 api_router.include_router(studio.router, prefix="/studio", tags=["studio"])
 api_router.include_router(backup.router, prefix="/backups", tags=["backups"])
+api_router.include_router(marketing.router)
 

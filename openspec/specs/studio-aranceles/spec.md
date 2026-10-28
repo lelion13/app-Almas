@@ -17,9 +17,21 @@ Admin MUST CRUD aranceles: name, price, classes_per_week (≥1), one or more act
 
 ### Requirement: Student abono
 
-Admin or instructor MUST create an abono for a student with arancel, paid_on, and up to `classes_per_week` **semana modelo** slot ids where the student is already assigned for the arancel's activities. Empty slots MUST be rejected. On save the system MUST upsert ClassSeries from those slots and link abono↔slots and abono↔series. Period MUST be `paid_on` through the same calendar day next month (inclusive; clamp end-of-month). Multiple active abonos for one student MUST NOT share any activity.
+Admin or instructor MUST create an abono for a student with arancel, paid_on, and up to `classes_per_week` **model-week slot ids** where the student is already assigned on the semana modelo for the arancel's activities. Empty `model_slot_ids` MUST be rejected with a clear error directing the user to Semana modelo. Slots where the student is not assigned MUST be rejected (422).
+
+On save, the system MUST upsert `ClassSeries` per chosen slot (instructor and capacity from the slot/room) and link both `studio_abono_model_slots` and `studio_abono_series`. Period MUST be `paid_on` through the same calendar day next month (inclusive; clamp end-of-month). Multiple active abonos for one student MUST NOT share any activity.
 
 **Series vs turnos:** Series are the weekly pattern derived from modelo cells. Turnos are concrete dates in the abono period for those series.
+
+#### Scenario: Abono without model slots fails
+- **GIVEN** a student with no semana modelo assignments for the arancel activities
+- **WHEN** creating an abono with empty or foreign slot ids
+- **THEN** the API MUST return 422
+
+#### Scenario: Abono from model slots materializes series
+- **GIVEN** the student is on N≤classes_per_week model cells for the arancel
+- **WHEN** an abono is created with those `model_slot_ids`
+- **THEN** matching ClassSeries MUST exist/update and period bookings MUST materialize
 
 ### Requirement: Weekday convention
 
@@ -37,21 +49,25 @@ On create (no explicit `booking_ids`), newly materialized bookings MUST be cover
 
 ### Requirement: Turn coverage UI
 
-Eligible turnos = active bookings for the student in period ∩ chosen series. Estudio Abonos modal MUST:
+Eligible turnos = active bookings for the student in period ∩ chosen series (derived from modelo slots). Estudio Abonos modal MUST:
 
-- Distinguish **Series** (weekly pattern) from **Turnos elegibles** (concrete dates).
+- List **horarios semana modelo** (not a free ClassSeries picker) then **Turnos elegibles** (concrete dates).
 - Default checkboxes: if none covered yet, **all eligible ticked**; if some already covered, restore covered set (destilds persist after save).
 - Saving with unchecked turnos MUST leave those bookings on the calendar but with `abono_id` null.
 
 Bookings MAY also be created via calendar enroll without an abono. Linking/unlinking remains editable without changing period dates.
 
+### Requirement: Abono UI uses model slots
+
+Estudio Abonos modal MUST list the student's semana modelo cells for the chosen arancel. UI copy MUST explain that assignment on Semana modelo is required first.
+
 ### Requirement: Pause carve-out
 
-Arancel and abono APIs MUST remain available while `STUDIO_SCHEDULE_PAUSED` is true.
+Arancel, abono, and model-week APIs MUST remain available while `STUDIO_SCHEDULE_PAUSED` is true.
 
 ### Requirement: Estudio UI
 
-Admin Estudio MUST show tab **Aranceles** for catalog CRUD and **Abonos** actions on Alumnos rows.
+Admin Estudio MUST show tab **Aranceles** for catalog CRUD, tab **Semana modelo**, and **Abonos** actions on Alumnos rows.
 
 ## Out of scope (deferred)
 

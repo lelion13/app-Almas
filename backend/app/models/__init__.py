@@ -7,6 +7,7 @@ from app.models.closing import (
     SiguefitImportBatch,
     Teacher,
 )
+from app.models.marketing_gbp import GbpConnection, GbpOauthState, GbpReplySession, GbpReview
 from app.models.mp_account import MpAccount, MpOauthState
 from app.models.studio import (
     Attendance,
@@ -48,6 +49,10 @@ __all__ = [
     "ManualExpense",
     "MpAccount",
     "MpOauthState",
+    "GbpConnection",
+    "GbpOauthState",
+    "GbpReview",
+    "GbpReplySession",
     "StudioSite",
     "StudioRoom",
     "StudioRoomHours",

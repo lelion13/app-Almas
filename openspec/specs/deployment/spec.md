@@ -59,9 +59,9 @@ In production, the configured `MP_REDIRECT_URI` MUST be reachable through the pu
 
 ### Requirement: Migrations
 
-Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`017`**.
+Backend entrypoint MUST run `alembic upgrade head` unless `SKIP_DB_MIGRATE=1`. Product Alembic head MUST be **`018`**.
 
-Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_room_hours` + `008_room_hour_slots` + `009_room_share_space` + `010_ensure_room_share_space` + `011_activity_rooms` + `012_system_backups` + `013_instructor_activities` + `014_align_instructor_emails` + `015_booking_pack_nullable_student_email` + `016_aranceles_drop_packs` + `017_model_week`.
+Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_room_hours` + `008_room_hour_slots` + `009_room_share_space` + `010_ensure_room_share_space` + `011_activity_rooms` + `012_system_backups` + `013_instructor_activities` + `014_align_instructor_emails` + `015_booking_pack_nullable_student_email` + `016_aranceles_drop_packs` + `017_model_week` + `018_marketing_gbp`.
 
 `010` MUST be idempotent: add `studio_rooms.shares_space_with_room_id` if missing; drop leftover `space_id` / `studio_spaces` from the abandoned Espacios design. Operators MUST NOT assume stamp `009` means the share-space column exists (revision file was rewritten in place).
 
@@ -76,6 +76,10 @@ Chain: `003`/`004` MP accounts + `005_studio_ops` + `006_site_maps_url` + `007_r
 `015` MUST make `studio_bookings.pack_id` **nullable** (admin calendar enroll without pack) and MUST align `studio_students.email` to linked `users.email` where `user_id` is set and values diverge.
 
 `016` MUST drop pack/fixed-enrollment schema (`studio_fixed_enrollments`, `studio_bookings.pack_id`, `studio_student_packs`, `studio_pack_products`) and MUST create arancel/abono tables plus nullable `studio_bookings.abono_id`.
+
+`017` MUST create `studio_model_week_slots`, `studio_model_week_students`, and `studio_abono_model_slots`.
+
+`018` MUST create `gbp_connections`, `gbp_oauth_states`, `gbp_reviews`, and `gbp_reply_sessions`.
 
 If a restored dump still reports an orphan revision `003` from a **discarded** earlier MP reconciliation attempt that is **not** the current `003_mp_accounts` in the repo, operators MUST clean that revision before upgrade (drop orphan MP tables if present and stamp to a known good revision). New installs MUST only apply migrations present in the shipped image.
 
